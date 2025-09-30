@@ -1,0 +1,86 @@
+name: AnyRouter 自动签到 (Node.js)
+
+on:
+  workflow_dispatch:  # 只允许手动触发
+
+jobs:
+  checkin:
+    runs-on: ubuntu-latest  # 使用 Linux 环境，更适合 CI/CD
+    timeout-minutes: 30  # 设置工作流超时时间为 30 分钟
+    environment: production
+
+    steps:
+    - name: 检出代码
+      uses: actions/checkout@v4
+
+    - name: 设置 Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+
+    - name: 缓存依赖
+      id: cache-deps
+      uses: actions/cache@v4
+      with:
+        path: node_modules
+        key: ${{ runner.os }}-node-${{ hashFiles('package-lock.json') }}
+        restore-keys: |
+          ${{ runner.os }}-node-
+
+    - name: 安装依赖
+      if: steps.cache-deps.outputs.cache-hit != 'true'
+      run: |
+        echo "正在安装项目依赖..."
+        npm ci
+        echo "✅ 依赖安装完成"
+
+    - name: 获取 Playwright 版本
+      id: playwright-version
+      run: |
+        version=$(node -p "require('playwright/package.json').version")
+        echo "version=$version" >> $GITHUB_OUTPUT
+        echo "Playwright version: $version"
+
+    - name: 缓存 Playwright 浏览器
+      uses: actions/cache@v4
+      id: playwright-cache
+      with:
+        path: ~/.cache/ms-playwright
+        key: ${{ runner.os }}-playwright-${{ steps.playwright-version.outputs.version }}
+        restore-keys: |
+          ${{ runner.os }}-playwright-
+
+    - name: 安装 Playwright 浏览器
+      run: |
+        if [ "${{ steps.playwright-cache.outputs.cache-hit }}" != "true" ]; then
+          echo "缓存未命中，开始安装 Playwright 浏览器..."
+        else
+          echo "使用缓存，验证浏览器安装..."
+        fi
+        npx playwright install chromium --with-deps
+        echo "✅ Playwright 浏览器就绪"
+
+    - name: 执行签到
+      timeout-minutes: 25  # 签到步骤单独设置超时
+      env:
+        ANYROUTER_ACCOUNTS: ${{ secrets.ANYROUTER_ACCOUNTS }}
+        EMAIL_USER: ${{ secrets.EMAIL_USER }}
+        EMAIL_PASS: ${{ secrets.EMAIL_PASS }}
+        EMAIL_TO: ${{ secrets.EMAIL_TO }}
+        API_BASE_URL: ${{ secrets.API_BASE_URL }}
+      run: |
+        echo "开始执行签到任务..."
+        npm start
+
+    - name: 执行结果
+      if: always()
+      run: |
+        echo "签到任务执行完成"
+        echo "时间: $(date)"
+        if [ ${{ job.status }} == 'success' ]; then
+          echo "✅ 签到成功"
+        else
+          echo "❌ 签到失败"
+          exit 1
+        fi

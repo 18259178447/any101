@@ -1,0 +1,47 @@
+{
+  "name": "anyrouter-checkin-node",
+  "version": "1.0.0",
+  "description": "AnyRouter 多账号自动签到工具 Node.js 版",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/checkin/index.js",
+    "test": "NODE_OPTIONS=--experimental-vm-modules jest",
+    "lint": "eslint src/**/*.js",
+    "format": "prettier --write \"src/**/*.js\" \"tests/**/*.js\""
+  },
+  "keywords": [
+    "anyrouter",
+    "checkin",
+    "automation",
+    "playwright"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "axios": "^1.6.5",
+    "axios-http2-adapter": "^1.0.3",
+    "dotenv": "^16.3.1",
+    "nodemailer": "^6.9.8",
+    "playwright": "^1.40.1",
+    "imap": "^0.8.19",
+    "mailparser": "^3.7.4"
+  },
+  "devDependencies": {
+    "@jest/globals": "^29.7.0",
+    "eslint": "^8.56.0",
+    "jest": "^29.7.0",
+    "prettier": "^3.1.1"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "jest": {
+    "testEnvironment": "node",
+    "extensionsToTreatAsEsm": [".js"],
+    "transform": {},
+    "moduleNameMapper": {
+      "^(\\.{1,2}/.*)\\.js$": "$1"
+    }
+  }
+}
