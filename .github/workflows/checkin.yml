@@ -52,14 +52,15 @@ jobs:
           ${{ runner.os }}-playwright-
 
     - name: 安装 Playwright 浏览器
+      if: steps.playwright-cache.outputs.cache-hit != 'true'
       run: |
-        if [ "${{ steps.playwright-cache.outputs.cache-hit }}" != "true" ]; then
-          echo "缓存未命中，开始安装 Playwright 浏览器..."
-        else
-          echo "使用缓存，验证浏览器安装..."
-        fi
+        echo "缓存未命中，开始安装 Playwright 浏览器..."
         npx playwright install chromium --with-deps
-        echo "✅ Playwright 浏览器就绪"
+        echo "✅ Playwright 浏览器安装完成"
+
+    - name: 验证 Playwright 缓存
+      if: steps.playwright-cache.outputs.cache-hit == 'true'
+      run: echo "✅ 使用缓存的 Playwright 浏览器"
 
     - name: 执行签到
       timeout-minutes: 25  # 签到步骤单独设置超时

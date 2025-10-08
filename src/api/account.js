@@ -7,8 +7,8 @@ import apiClient, { handleApiResponse } from './client.js';
 /**
  * 添加官方账号
  * @param {Object} accountData - 账号数据
- * @param {string} accountData.username - AnyRouter账号用户名
- * @param {string} accountData.password - AnyRouter账号密码
+ * @param {string} accountData.username - 账号用户名
+ * @param {string} accountData.password - 账号密码
  * @param {string} [accountData.register_email] - 注册邮箱地址（可选）
  * @returns {Promise<{success: boolean, data?: {account_id: string, username: string, register_email: string}, error?: string}>}
  */
@@ -41,7 +41,7 @@ export async function addOfficialAccount(accountData) {
  * @param {string} [updateData.register_email] - 注册邮箱
  * @param {string} [updateData.session] - 会话标识
  * @param {number} [updateData.session_expire_time] - Session过期时间戳
- * @param {string} [updateData.account_id] - AnyRouter平台账号ID
+ * @param {string} [updateData.account_id] - 平台账号ID
  * @param {number} [updateData.checkin_date] - 签到时间戳
  * @param {string} [updateData.github_username] - GitHub用户名
  * @param {string} [updateData.github_password] - GitHub密码
