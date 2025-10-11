@@ -62,6 +62,25 @@ jobs:
       if: steps.playwright-cache.outputs.cache-hit == 'true'
       run: echo "✅ 使用缓存的 Playwright 浏览器"
 
+    - name: 缓存 Playwright 持久化状态
+      uses: actions/cache@v4
+      id: playwright-state-cache
+      with:
+        path: .playwright-state
+        key: ${{ runner.os }}-playwright-state-${{ github.run_number }}
+        restore-keys: |
+          ${{ runner.os }}-playwright-state-
+
+    - name: 验证持久化状态缓存
+      run: |
+        if [ -d ".playwright-state" ]; then
+          echo "✅ 恢复了持久化状态缓存"
+          echo "缓存目录大小: $(du -sh .playwright-state 2>/dev/null || echo '未知')"
+          echo "用户目录数量: $(find .playwright-state -maxdepth 1 -type d 2>/dev/null | wc -l)"
+        else
+          echo "ℹ️  首次运行,无持久化状态"
+        fi
+
     - name: 执行签到
       timeout-minutes: 25  # 签到步骤单独设置超时
       env:

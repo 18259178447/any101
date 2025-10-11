@@ -3,4 +3,9 @@
  */
 
 export { default as apiClient, handleApiResponse } from './client.js';
-export { addOfficialAccount, updateAccountInfo } from './account.js';
+export {
+	addOfficialAccount,
+	updateAccountInfo,
+	getAccountLoginInfo,
+	addAccountLoginInfo
+} from './account.js';

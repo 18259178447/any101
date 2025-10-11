@@ -181,11 +181,4 @@ process.on('SIGINT', () => {
 	process.exit(1);
 });
 
-// 运行主函数
-// 可以传入测试账号数组，例如：
-// const testAccounts = [{
-
-// }];
-// main(testAccounts);
-
 main();

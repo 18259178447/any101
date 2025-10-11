@@ -1,9 +1,11 @@
 /**
  * AnyRouter 统一签到模块
- * 使用账号密码登录签到
+ * 支持多种登录方式：账号密码、LinuxDo、GitHub
  */
 
 import AnyRouterSignIn from './checkin-username.js';
+import AnyRouterLinuxDoSignIn from './checkin-linuxdo.js';
+import AnyRouterGitHubSignIn from './checkin-github.js';
 import { updateAccountInfo as updateAccountInfoAPI } from '../api/index.js';
 
 class UnifiedAnyRouterChecker {
@@ -13,6 +15,8 @@ class UnifiedAnyRouterChecker {
 	constructor(accounts = null) {
 		this.accounts = accounts || this.loadAccounts();
 		this.signInModule = new AnyRouterSignIn();
+		this.linuxDoSignInModule = new AnyRouterLinuxDoSignIn();
+		this.githubSignInModule = new AnyRouterGitHubSignIn();
 	}
 
 	/**
@@ -114,7 +118,7 @@ class UnifiedAnyRouterChecker {
 
 			// 更新账户信息
 			await this.updateAccountInfo(accountInfo._id, updateData);
-			
+
 			return {
 				success: true,
 				account: accountName,
@@ -127,6 +131,116 @@ class UnifiedAnyRouterChecker {
 				account: accountName,
 				error: '登录失败',
 				method: 'password'
+			};
+		}
+	}
+
+	/**
+	 * 使用 LinuxDo 第三方登录进行签到
+	 */
+	async checkInWithLinuxDo(accountInfo) {
+		const accountName = accountInfo.username || accountInfo._id || '未知账号';
+
+		console.log(`[登录] ${accountName}: 使用 LinuxDo 第三方登录签到`);
+
+		// 调用 LinuxDo 登录模块
+		const loginResult = await this.linuxDoSignInModule.loginAndGetSession(
+			accountInfo.username,
+			accountInfo.password
+		);
+
+		if (loginResult) {
+			// 更新签到时间和余额信息
+			const updateData = {
+				checkin_date: Date.now()
+			};
+			// 构建用户信息字符串
+			let userInfoText = null;
+
+			// 如果成功获取用户信息，添加余额、已使用额度和推广码
+			if (loginResult.userInfo) {
+				updateData.balance = Math.round(loginResult.userInfo.quota / 500000);
+				updateData.used = Math.round((loginResult.userInfo.used_quota || 0) / 500000);
+				if (loginResult.userInfo.aff_code) {
+					updateData.aff_code = loginResult.userInfo.aff_code;
+				}
+
+				const quota = (loginResult.userInfo.quota / 500000).toFixed(2);
+				const usedQuota = (loginResult.userInfo.used_quota || 0) / 500000;
+				userInfoText = `💰 当前余额: $${quota}, 已使用: $${usedQuota.toFixed(2)}`;
+			}
+
+			// 更新账户信息
+			await this.updateAccountInfo(accountInfo._id, updateData);
+
+			return {
+				success: true,
+				account: accountName,
+				userInfo: userInfoText,
+				method: 'linuxdo'
+			};
+		} else {
+			return {
+				success: false,
+				account: accountName,
+				error: 'LinuxDo 登录失败',
+				method: 'linuxdo'
+			};
+		}
+	}
+
+	/**
+	 * 使用 GitHub 第三方登录进行签到
+	 */
+	async checkInWithGitHub(accountInfo) {
+		const accountName = accountInfo.username || accountInfo._id || '未知账号';
+
+		console.log(`[登录] ${accountName}: 使用 GitHub 第三方登录签到`);
+
+		// 调用 GitHub 登录模块
+		const loginResult = await this.githubSignInModule.loginAndGetSession(
+			accountInfo._id,
+			accountInfo.username,
+			accountInfo.password,
+			accountInfo.notice_email
+		);
+
+		if (loginResult) {
+			// 更新签到时间和余额信息
+			const updateData = {
+				checkin_date: Date.now()
+			};
+			// 构建用户信息字符串
+			let userInfoText = null;
+
+			// 如果成功获取用户信息，添加余额、已使用额度和推广码
+			if (loginResult.userInfo) {
+				updateData.balance = Math.round(loginResult.userInfo.quota / 500000);
+				updateData.used = Math.round((loginResult.userInfo.used_quota || 0) / 500000);
+				if (loginResult.userInfo.aff_code) {
+					updateData.aff_code = loginResult.userInfo.aff_code;
+				}
+
+				const quota = (loginResult.userInfo.quota / 500000).toFixed(2);
+				const usedQuota = (loginResult.userInfo.used_quota || 0) / 500000;
+				userInfoText = `💰 当前余额: $${quota}, 已使用: $${usedQuota.toFixed(2)}`;
+			}
+
+			// 更新账户信息
+			await this.updateAccountInfo(accountInfo._id, updateData);
+
+			return {
+				success: true,
+				account: accountName,
+				userInfo: userInfoText,
+				method: 'github'
+			};
+		} else {
+			return {
+				success: false,
+				account: accountName,
+				error: 'GitHub 登录失败',
+				method: 'github'
 			};
 		}
 	}
@@ -149,8 +263,34 @@ class UnifiedAnyRouterChecker {
 			};
 		}
 
-		// 使用用户名密码登录签到
-		return await this.checkInWithPassword(accountInfo);
+		// 获取登录类型（默认为账号密码登录）
+		const accountType = accountInfo.account_type ?? 0;
+
+		// 根据登录类型选择对应的登录方法
+		switch (accountType) {
+			case 0:
+				// 账号密码登录
+				console.log(`[类型] ${accountName}: 账号密码登录`);
+				return await this.checkInWithPassword(accountInfo);
+
+			case 1:
+				// LinuxDo 第三方登录
+				console.log(`[类型] ${accountName}: LinuxDo 第三方登录`);
+				return await this.checkInWithLinuxDo(accountInfo);
+
+			case 2:
+				// GitHub 第三方登录
+				console.log(`[类型] ${accountName}: GitHub 第三方登录`);
+				return await this.checkInWithGitHub(accountInfo);
+
+			default:
+				console.log(`[失败] ${accountName}: 未知的登录类型 ${accountType}`);
+				return {
+					success: false,
+					account: accountName,
+					error: `未知的登录类型: ${accountType}`
+				};
+		}
 	}
 
 	/**
