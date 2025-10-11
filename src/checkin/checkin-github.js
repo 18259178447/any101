@@ -336,7 +336,7 @@ class AnyRouterGitHubSignIn {
 								if (emailTo) {
 									console.log(`[邮件通知] 发送设备验证通知到: ${emailTo}`);
 									const emailTitle = 'AnyRouter GitHub 登录 - 设备验证通知';
-									const emailContent = `您正在使用 GitHub 登录 AnyRouter 签到，首次签到需要验证设备，请打开以下链接输入验证码进行设备验证，时效 5 分钟。\n\n验证链接：${adminLink}\n\nGitHub 账号：${username}\n过期时间：${new Date(expireTime).toLocaleString('zh-CN')}`;
+									const emailContent = `您正在使用 GitHub 登录 AnyRouter 签到，首次签到需要验证设备，您将会收到github发送的验证码，复制验证码后请打开以下链接输入验证码进行设备验证，时效 5 分钟。\n\n验证链接：${adminLink}\n\nGitHub 账号：${username}\n过期时间：${new Date(expireTime).toLocaleString('zh-CN')}`;
 
 									await notifier.sendEmail(emailTitle, emailContent, 'text', emailTo);
 									console.log('[邮件通知] 设备验证通知已发送');
