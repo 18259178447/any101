@@ -69,7 +69,7 @@ class UnifiedAnyRouterChecker {
 			const apiResult = await updateAccountInfoAPI(_id, updateData);
 
 			if (apiResult.success) {
-				console.log(`[更新] 服务端更新成功`);
+				console.log('[更新] 服务端更新成功');
 				return { success: true, message: '账户信息更新成功' };
 			} else {
 				console.error(`[更新] 服务端更新失败: ${apiResult.error}`);
@@ -98,7 +98,7 @@ class UnifiedAnyRouterChecker {
 		if (loginResult) {
 			// 只更新签到时间和余额信息
 			const updateData = {
-				checkin_date: Date.now()
+				checkin_date: Date.now(),
 			};
 			// 构建用户信息字符串
 			let userInfoText = null;
@@ -123,14 +123,14 @@ class UnifiedAnyRouterChecker {
 				success: true,
 				account: accountName,
 				userInfo: userInfoText,
-				method: 'password'
+				method: 'password',
 			};
 		} else {
 			return {
 				success: false,
 				account: accountName,
 				error: '登录失败',
-				method: 'password'
+				method: 'password',
 			};
 		}
 	}
@@ -146,13 +146,14 @@ class UnifiedAnyRouterChecker {
 		// 调用 LinuxDo 登录模块
 		const loginResult = await this.linuxDoSignInModule.loginAndGetSession(
 			accountInfo.username,
-			accountInfo.password
+			accountInfo.password,
+			accountInfo.cache_key
 		);
 
 		if (loginResult) {
 			// 更新签到时间和余额信息
 			const updateData = {
-				checkin_date: Date.now()
+				checkin_date: Date.now(),
 			};
 			// 构建用户信息字符串
 			let userInfoText = null;
@@ -177,14 +178,14 @@ class UnifiedAnyRouterChecker {
 				success: true,
 				account: accountName,
 				userInfo: userInfoText,
-				method: 'linuxdo'
+				method: 'linuxdo',
 			};
 		} else {
 			return {
 				success: false,
 				account: accountName,
 				error: 'LinuxDo 登录失败',
-				method: 'linuxdo'
+				method: 'linuxdo',
 			};
 		}
 	}
@@ -208,7 +209,7 @@ class UnifiedAnyRouterChecker {
 		if (loginResult) {
 			// 更新签到时间和余额信息
 			const updateData = {
-				checkin_date: Date.now()
+				checkin_date: Date.now(),
 			};
 			// 构建用户信息字符串
 			let userInfoText = null;
@@ -233,14 +234,14 @@ class UnifiedAnyRouterChecker {
 				success: true,
 				account: accountName,
 				userInfo: userInfoText,
-				method: 'github'
+				method: 'github',
 			};
 		} else {
 			return {
 				success: false,
 				account: accountName,
 				error: 'GitHub 登录失败',
-				method: 'github'
+				method: 'github',
 			};
 		}
 	}
@@ -259,7 +260,7 @@ class UnifiedAnyRouterChecker {
 			return {
 				success: false,
 				account: accountName,
-				error: '缺少用户名或密码'
+				error: '缺少用户名或密码',
 			};
 		}
 
@@ -288,7 +289,7 @@ class UnifiedAnyRouterChecker {
 				return {
 					success: false,
 					account: accountName,
-					error: `未知的登录类型: ${accountType}`
+					error: `未知的登录类型: ${accountType}`,
 				};
 		}
 	}
@@ -308,7 +309,7 @@ class UnifiedAnyRouterChecker {
 					email: email,
 					results: [],
 					successCount: 0,
-					totalCount: 0
+					totalCount: 0,
 				};
 			}
 
@@ -348,14 +349,14 @@ class UnifiedAnyRouterChecker {
 				if (i < this.accounts.length - 1) {
 					const delay = 5000 + Math.random() * 2000; // 5-7秒随机延迟
 					console.log(`[等待] 等待 ${(delay / 1000).toFixed(1)} 秒后处理下一个账号...`);
-					await new Promise(resolve => setTimeout(resolve, delay));
+					await new Promise((resolve) => setTimeout(resolve, delay));
 				}
 			} catch (error) {
 				console.log(`[失败] 账号 ${i + 1} 处理异常: ${error.message}`);
 				results.push({
 					success: false,
 					account: this.accounts[i].username || `账号 ${i + 1}`,
-					error: error.message
+					error: error.message,
 				});
 			}
 		}
@@ -364,7 +365,7 @@ class UnifiedAnyRouterChecker {
 		const emailGroups = this.groupResultsByEmail(results, this.accounts);
 
 		// 统计结果
-		const successCount = results.filter(r => r.success).length;
+		const successCount = results.filter((r) => r.success).length;
 		const totalCount = this.accounts.length;
 
 		console.log('\n[统计] 签到结果统计:');
@@ -384,7 +385,7 @@ class UnifiedAnyRouterChecker {
 			results: results,
 			emailGroups: emailGroups,
 			successCount: successCount,
-			totalCount: totalCount
+			totalCount: totalCount,
 		};
 	}
 }

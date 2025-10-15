@@ -4,13 +4,13 @@
  */
 
 import { chromium } from 'playwright';
-import { applyStealthToContext, getStealthArgs, getIgnoreDefaultArgs } from '../utils/playwright-stealth.js';
+import { applyStealthToPage, getPersistentContextOptions } from '../utils/playwright-stealth2.js';
 import path from 'path';
 import fs from 'fs';
 
 class AnyRouterLinuxDoSignIn {
-	constructor() {
-		this.baseUrl = 'https://anyrouter.top';
+	constructor(baseUrl = 'https://anyrouter.top') {
+		this.baseUrl = baseUrl;
 		this.linuxDoUrl = 'https://linux.do';
 	}
 
@@ -19,9 +19,9 @@ class AnyRouterLinuxDoSignIn {
 	 * @param {string} username - LinuxDo 用户名
 	 * @returns {string} - 用户数据目录路径
 	 */
-	getUserDataDir(username) {
+	getUserDataDir(username, cacheKey = "") {
 		const storageDir = path.join(process.cwd(), '.playwright-state');
-		const userDir = path.join(storageDir, `linuxdo_${username}`);
+		const userDir = path.join(storageDir, `linuxdo_${username}${cacheKey}`);
 
 		// 确保目录存在
 		if (!fs.existsSync(storageDir)) {
@@ -43,7 +43,7 @@ class AnyRouterLinuxDoSignIn {
 	 */
 	async randomDelay(min = 500, max = 1500) {
 		const delay = this.getRandomDelay(min, max);
-		await new Promise(resolve => setTimeout(resolve, delay));
+		await new Promise((resolve) => setTimeout(resolve, delay));
 	}
 
 	/**
@@ -52,7 +52,7 @@ class AnyRouterLinuxDoSignIn {
 	 * @param {string} password - LinuxDo 密码
 	 * @returns {Object|null} - { session: string, apiUser: string, userInfo: object }
 	 */
-	async loginAndGetSession(username, password) {
+	async loginAndGetSession(username, password, cacheKey = "") {
 		console.log(`[登录签到] 开始处理 LinuxDo 账号: ${username}`);
 
 		let context = null;
@@ -60,32 +60,24 @@ class AnyRouterLinuxDoSignIn {
 
 		try {
 			// 获取用户专属数据目录
-			const userDataDir = this.getUserDataDir(username);
+			const userDataDir = this.getUserDataDir(username, cacheKey);
 			console.log(`[浏览器] 使用持久化上下文: ${userDataDir}`);
 			console.log('[浏览器] 启动 Chromium 浏览器（持久化模式，已启用反检测）...');
 
-			// 启动持久化浏览器上下文
-			context = await chromium.launchPersistentContext(userDataDir, {
-				headless: true,
-				viewport: { width: 1920, height: 1080 },
-				userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-				locale: 'zh-CN',
-				timezoneId: 'Asia/Shanghai',
-				deviceScaleFactor: 1,
-				isMobile: false,
-				hasTouch: false,
-				permissions: ['geolocation', 'notifications'],
-				colorScheme: 'light',
-				args: getStealthArgs(),
-				ignoreDefaultArgs: getIgnoreDefaultArgs()
-			});
-
-			// 应用反检测脚本到上下文
-			await applyStealthToContext(context);
+			// 启动持久化浏览器上下文（使用统一配置）
+			context = await chromium.launchPersistentContext(
+				userDataDir,
+				getPersistentContextOptions(userDataDir,{
+					headless: true, // 有头模式，更难被检测
+				})
+			);
 
 			// 获取或创建页面
 			const pages = context.pages();
 			page = pages.length > 0 ? pages[0] : await context.newPage();
+
+			// 应用反检测脚本到页面
+			await applyStealthToPage(page);
 
 			// 设置请求拦截，监听登录和签到接口
 			let signInResponse = null;
@@ -98,7 +90,7 @@ class AnyRouterLinuxDoSignIn {
 				userSelfResolve = resolve;
 			});
 
-			page.on('response', async response => {
+			page.on('response', async (response) => {
 				const url = response.url();
 
 				// 监听签到接口响应
@@ -119,7 +111,7 @@ class AnyRouterLinuxDoSignIn {
 			console.log('[页面] 访问 AnyRouter 首页...');
 			await page.goto(`${this.baseUrl}`, {
 				waitUntil: 'networkidle',
-				timeout: 30000
+				timeout: 30000,
 			});
 
 			// 等待页面加载完成
@@ -138,7 +130,7 @@ class AnyRouterLinuxDoSignIn {
 					console.log('[导航] 跳转到 /console 页面...');
 					await page.goto(`${this.baseUrl}/console`, {
 						waitUntil: 'networkidle',
-						timeout: 15000
+						timeout: 15000,
 					});
 					await this.randomDelay(2000, 3000);
 				}
@@ -147,7 +139,7 @@ class AnyRouterLinuxDoSignIn {
 				console.log('[等待] 等待用户信息接口响应...');
 				const userSelfReceived = await Promise.race([
 					userSelfPromise,
-					new Promise(resolve => setTimeout(() => resolve(false), 10000))
+					new Promise((resolve) => setTimeout(() => resolve(false), 10000)),
 				]);
 
 				if (!userSelfReceived) {
@@ -156,7 +148,7 @@ class AnyRouterLinuxDoSignIn {
 
 				// 跳转到获取用户信息的代码段
 				// 使用标签跳转(通过设置变量控制流程)
-			} else if (currentPageUrl.includes('/login')) {
+			} else if (currentPageUrl.includes('/login') || currentPageUrl.includes('/register?aff=')) {
 				// 未登录,在登录页面,继续 LinuxDo 登录流程
 				console.log('[检测] AnyRouter 未登录,开始 LinuxDo 登录流程');
 			} else {
@@ -164,42 +156,9 @@ class AnyRouterLinuxDoSignIn {
 			}
 
 			// 只有在登录页面才执行以下步骤
-			if (currentPageUrl.includes('/login')) {
-
-			// 步骤2: 检查并关闭系统公告弹窗
-			console.log('[检查] 检测系统公告弹窗...');
-			try {
-				const dialogSelector = 'div[role="dialog"]';
-				await page.waitForSelector(dialogSelector, { timeout: 3000 });
-
-				console.log('[弹窗] 发现系统公告，准备关闭...');
-				await this.randomDelay(500, 1000);
-
-				// 尝试点击"关闭公告"按钮
-				const closeButton = page.getByRole('button', { name: '关闭公告' });
-				if (await closeButton.isVisible()) {
-					await closeButton.click();
-					console.log('[弹窗] 已关闭系统公告');
-					await this.randomDelay(500, 1000);
-				}
-			} catch (e) {
-				console.log('[弹窗] 未发现系统公告弹窗');
-			}
-
-			// 步骤3: 点击 "使用 LinuxDO 继续" 按钮，等待新标签页打开
-			console.log('[登录] 检查 "使用 LinuxDO 继续" 按钮...');
-
-			// 先检查按钮是否存在
-			const linuxDoButton = page.getByRole('button', { name: '使用 LinuxDO 继续' });
-			const isButtonVisible = await linuxDoButton.isVisible().catch(() => false);
-
-			if (!isButtonVisible) {
-				console.log('[按钮] "使用 LinuxDO 继续" 按钮不可见，刷新页面后重试...');
-				await page.reload({ waitUntil: 'networkidle', timeout: 30000 });
-				await this.randomDelay(1000, 2000);
-
-				// 刷新后再次检查弹窗
-				console.log('[检查] 刷新后检测系统公告弹窗...');
+			if (currentPageUrl.includes('/login') || currentPageUrl.includes('/register?aff=')) {
+				// 步骤2: 检查并关闭系统公告弹窗
+				console.log('[检查] 检测系统公告弹窗...');
 				try {
 					const dialogSelector = 'div[role="dialog"]';
 					await page.waitForSelector(dialogSelector, { timeout: 3000 });
@@ -207,6 +166,7 @@ class AnyRouterLinuxDoSignIn {
 					console.log('[弹窗] 发现系统公告，准备关闭...');
 					await this.randomDelay(500, 1000);
 
+					// 尝试点击"关闭公告"按钮
 					const closeButton = page.getByRole('button', { name: '关闭公告' });
 					if (await closeButton.isVisible()) {
 						await closeButton.click();
@@ -216,141 +176,171 @@ class AnyRouterLinuxDoSignIn {
 				} catch (e) {
 					console.log('[弹窗] 未发现系统公告弹窗');
 				}
-			}
 
-			console.log('[登录] 点击 "使用 LinuxDO 继续" 按钮...');
+				// 步骤3: 点击 "使用 LinuxDO 继续" 按钮，等待新标签页打开
+				console.log('[登录] 检查 "使用 LinuxDO 继续" 按钮...');
 
-			// 监听新标签页事件
-			const newPagePromise = context.waitForEvent('page');
-			await linuxDoButton.click();
+				// 先检查按钮是否存在
+				const linuxDoButton = page.getByRole('button', { name: '使用 LinuxDO 继续' });
+				const isButtonVisible = await linuxDoButton.isVisible().catch(() => false);
 
-			// 等待新标签页打开
-			console.log('[等待] 等待 LinuxDo 授权页面在新标签页打开...');
-			const newPage = await newPagePromise;
-			await newPage.waitForLoadState('domcontentloaded');
+				if (!isButtonVisible) {
+					console.log('[按钮] "使用 LinuxDO 继续" 按钮不可见，刷新页面后重试...');
+					await page.reload({ waitUntil: 'networkidle', timeout: 30000 });
+					await this.randomDelay(1000, 2000);
 
-			// 切换到新标签页
-			page = newPage;
-			console.log(`[页面] 已切换到新标签页: ${page.url()}`);
+					// 刷新后再次检查弹窗
+					console.log('[检查] 刷新后检测系统公告弹窗...');
+					try {
+						const dialogSelector = 'div[role="dialog"]';
+						await page.waitForSelector(dialogSelector, { timeout: 3000 });
 
-			// 在新页面上设置响应监听
-			page.on('response', async response => {
-				const url = response.url();
-				console.log(`[网络] 捕获响应: ${url}`);
-				// 监听签到接口响应
-				if (url === "https://anyrouter.top/api/user/sign_in") {
-					console.log('[网络] 捕获签到接口响应');
-					signInResponse = await response.json().catch(() => null);
+						console.log('[弹窗] 发现系统公告，准备关闭...');
+						await this.randomDelay(500, 1000);
+
+						const closeButton = page.getByRole('button', { name: '关闭公告' });
+						if (await closeButton.isVisible()) {
+							await closeButton.click();
+							console.log('[弹窗] 已关闭系统公告');
+							await this.randomDelay(500, 1000);
+						}
+					} catch (e) {
+						console.log('[弹窗] 未发现系统公告弹窗');
+					}
 				}
 
-				// 监听用户信息接口响应
-				if (url === "https://anyrouter.top/api/user/self") {
-					console.log('[网络] 捕获用户信息接口响应');
-					userSelfResponse = await response.json().catch(() => null);
-					userSelfResolve(true); // 通知已收到响应
-				}
-			});
+				console.log('[登录] 点击 "使用 LinuxDO 继续" 按钮...');
 
-			// 等待页面完全加载
-			await this.randomDelay(1000, 2000);
+				// 监听新标签页事件
+				const newPagePromise = context.waitForEvent('page');
+				await linuxDoButton.click();
 
-			// 步骤4: 检查是否跳转到 LinuxDo 登录页面
-			const currentUrl = page.url();
-			console.log(`[页面] 当前 URL: ${currentUrl}`);
+				// 等待新标签页打开
+				console.log('[等待] 等待 LinuxDo 授权页面在新标签页打开...');
+				const newPage = await newPagePromise;
+				await newPage.waitForLoadState('domcontentloaded');
 
-			if (currentUrl.includes('linux.do/login')) {
-				// 需要登录 LinuxDo
-				console.log('[LinuxDo] 检测到需要登录，开始填写 LinuxDo 账号...');
+				// 切换到新标签页
+				page = newPage;
+				console.log(`[页面] 已切换到新标签页: ${page.url()}`);
 
-				// 等待登录表单加载
-				await page.waitForSelector('#login-account-name', { timeout: 10000 });
-				await this.randomDelay(500, 1000);
+				// 在新页面上设置响应监听
+				page.on('response', async (response) => {
+					const url = response.url();
+					console.log(`[网络] 捕获响应: ${url}`);
+					// 监听签到接口响应
+					if (url === 'https://anyrouter.top/api/user/sign_in') {
+						console.log('[网络] 捕获签到接口响应');
+						signInResponse = await response.json().catch(() => null);
+					}
 
-				// 输入用户名
-				console.log('[输入] 填写 LinuxDo 用户名...');
-				const usernameInput = page.locator('#login-account-name');
-				await usernameInput.click();
-				await this.randomDelay(300, 600);
-
-				// 模拟逐字输入
-				for (const char of username) {
-					await page.keyboard.type(char);
-					await this.randomDelay(50, 150);
-				}
-
-				// 输入密码
-				console.log('[输入] 填写 LinuxDo 密码...');
-				const passwordInput = page.locator('#login-account-password');
-				await passwordInput.click();
-				await this.randomDelay(300, 600);
-
-				// 模拟逐字输入密码
-				for (const char of password) {
-					await page.keyboard.type(char);
-					await this.randomDelay(50, 150);
-				}
-
-				await this.randomDelay(500, 1000);
-
-				// 点击登录按钮
-				console.log('[LinuxDo] 点击登录按钮...');
-				const loginButton = page.locator('#login-button');
-				await loginButton.click();
-
-				// 等待跳转到授权页面
-				console.log('[等待] 等待跳转到授权页面...');
-				await page.waitForURL('**/oauth2/authorize**', {
-					timeout: 15000
+					// 监听用户信息接口响应
+					if (url === 'https://anyrouter.top/api/user/self') {
+						console.log('[网络] 捕获用户信息接口响应');
+						userSelfResponse = await response.json().catch(() => null);
+						userSelfResolve(true); // 通知已收到响应
+					}
 				});
+
+				// 等待页面完全加载
 				await this.randomDelay(1000, 2000);
-			} else if (currentUrl.includes('oauth2/authorize')) {
-				// 已经登录，直接到达授权页面
-				console.log('[LinuxDo] 已登录，进入授权页面');
-			} else {
-				console.log('[警告] 未按预期跳转，当前URL: ' + currentUrl);
-			}
 
-			// 步骤5: 点击授权页面的"允许"按钮
-			console.log('[授权] 等待授权页面加载...');
-			await page.waitForSelector('a[href*="/oauth2/approve/"]', { timeout: 10000 });
-			await this.randomDelay(500, 1000);
+				// 步骤4: 检查是否跳转到 LinuxDo 登录页面
+				const currentUrl = page.url();
+				console.log(`[页面] 当前 URL: ${currentUrl}`);
 
-			console.log('[授权] 点击"允许"按钮...');
-			const allowButton = page.getByRole('link', { name: '允许' });
-			await allowButton.click();
+				if (currentUrl.includes('linux.do/login')) {
+					// 需要登录 LinuxDo
+					console.log('[LinuxDo] 检测到需要登录，开始填写 LinuxDo 账号...');
 
-			// 步骤6: 等待跳转回 AnyRouter 并完成登录
-			console.log('[等待] 等待跳转回 AnyRouter...');
+					// 等待登录表单加载
+					await page.waitForSelector('#login-account-name', { timeout: 10000 });
+					await this.randomDelay(500, 1000);
 
-			// 等待页面稳定
-			await this.randomDelay(3000, 5000);
+					// 输入用户名
+					console.log('[输入] 填写 LinuxDo 用户名...');
+					const usernameInput = page.locator('#login-account-name');
+					await usernameInput.click();
+					await this.randomDelay(300, 600);
 
-			// 检查当前页面
-			const finalUrl = page.url();
-			console.log(`[成功] 登录成功，当前页面: ${finalUrl}`);
+					// 模拟逐字输入
+					for (const char of username) {
+						await page.keyboard.type(char);
+						await this.randomDelay(50, 150);
+					}
 
-			// 如果在 /console/token 页面，需要跳转到 /console 触发用户信息接口
-			if (finalUrl.includes('/console/token')) {
-				console.log('[导航] 检测到在 /console/token 页面，跳转到 /console 触发接口...');
-				await page.goto(`${this.baseUrl}/console`, {
-					waitUntil: 'networkidle',
-					timeout: 15000
-				});
-				console.log('[成功] 已跳转到控制台页面');
-				await this.randomDelay(2000, 3000);
-			}
+					// 输入密码
+					console.log('[输入] 填写 LinuxDo 密码...');
+					const passwordInput = page.locator('#login-account-password');
+					await passwordInput.click();
+					await this.randomDelay(300, 600);
 
-			// 等待 /api/user/self 接口响应（最多等待 10 秒）
-			console.log('[等待] 等待用户信息接口响应...');
-			const userSelfReceived2 = await Promise.race([
-				userSelfPromise,
-				new Promise(resolve => setTimeout(() => resolve(false), 10000))
-			]);
+					// 模拟逐字输入密码
+					for (const char of password) {
+						await page.keyboard.type(char);
+						await this.randomDelay(50, 150);
+					}
 
-			if (!userSelfReceived2) {
-				console.log('[警告] 等待 /api/user/self 接口超时，将使用备用方案');
-			}
+					await this.randomDelay(500, 1000);
 
+					// 点击登录按钮
+					console.log('[LinuxDo] 点击登录按钮...');
+					const loginButton = page.locator('#login-button');
+					await loginButton.click();
+
+					// 等待跳转到授权页面
+					console.log('[等待] 等待跳转到授权页面...');
+					await page.waitForURL('**/oauth2/authorize**', {
+						timeout: 150000,
+					});
+					await this.randomDelay(1000, 2000);
+				} else if (currentUrl.includes('oauth2/authorize')) {
+					// 已经登录，直接到达授权页面
+					console.log('[LinuxDo] 已登录，进入授权页面');
+				} else {
+					console.log('[警告] 未按预期跳转，当前URL: ' + currentUrl);
+				}
+
+				// 步骤5: 点击授权页面的"允许"按钮
+				console.log('[授权] 等待授权页面加载...');
+				await page.waitForSelector('a[href*="/oauth2/approve/"]', { timeout: 100000 });
+				await this.randomDelay(500, 1000);
+
+				console.log('[授权] 点击"允许"按钮...');
+				const allowButton = page.getByRole('link', { name: '允许' });
+				await allowButton.click();
+
+				// 步骤6: 等待跳转回 AnyRouter 并完成登录
+				console.log('[等待] 等待跳转回 AnyRouter...');
+
+				// 等待页面稳定
+				await this.randomDelay(3000, 5000);
+
+				// 检查当前页面
+				const finalUrl = page.url();
+				console.log(`[成功] 登录成功，当前页面: ${finalUrl}`);
+
+				// 如果在 /console/token 页面，需要跳转到 /console 触发用户信息接口
+				if (finalUrl.includes('/console/token')) {
+					console.log('[导航] 检测到在 /console/token 页面，跳转到 /console 触发接口...');
+					await page.goto(`${this.baseUrl}/console`, {
+						waitUntil: 'networkidle',
+						timeout: 15000,
+					});
+					console.log('[成功] 已跳转到控制台页面');
+					await this.randomDelay(2000, 3000);
+				}
+
+				// 等待 /api/user/self 接口响应（最多等待 10 秒）
+				console.log('[等待] 等待用户信息接口响应...');
+				const userSelfReceived2 = await Promise.race([
+					userSelfPromise,
+					new Promise((resolve) => setTimeout(() => resolve(false), 10000)),
+				]);
+
+				if (!userSelfReceived2) {
+					console.log('[警告] 等待 /api/user/self 接口超时，将使用备用方案');
+				}
 			} // 结束 if (currentPageUrl.includes('/login')) 代码块
 
 			// 步骤7: 获取用户信息
@@ -382,7 +372,7 @@ class AnyRouterLinuxDoSignIn {
 						apiUser = userData.id ? String(userData.id) : null;
 						console.log(`[信息] 用户ID (api_user): ${apiUser}`);
 						console.log(`[信息] 用户名: ${userData.username}`);
-						console.log(`[警告] localStorage 数据可能不准确，建议使用 /api/user/self 接口数据`);
+						console.log('[警告] localStorage 数据可能不准确，建议使用 /api/user/self 接口数据');
 					} catch (e) {
 						console.log('[错误] 解析用户数据失败');
 					}
@@ -391,7 +381,7 @@ class AnyRouterLinuxDoSignIn {
 
 			// 获取当前页面的所有 cookies
 			const cookies = await context.cookies();
-			const sessionCookieFromPage = cookies.find(c => c.name === 'session');
+			const sessionCookieFromPage = cookies.find((c) => c.name === 'session');
 
 			if (sessionCookieFromPage) {
 				sessionCookie = sessionCookieFromPage.value;
@@ -414,7 +404,7 @@ class AnyRouterLinuxDoSignIn {
 				return {
 					session: sessionCookie,
 					apiUser: apiUser,
-					userInfo: userData
+					userInfo: userData,
 				};
 			} else {
 				console.log('[失败] 未能获取完整的认证信息');
@@ -422,7 +412,6 @@ class AnyRouterLinuxDoSignIn {
 				console.log(`  - api_user: ${apiUser ? '✓' : '✗'}`);
 				return null;
 			}
-
 		} catch (error) {
 			console.log(`[错误] 登录过程发生错误: ${error.message}`);
 			return null;
@@ -450,15 +439,12 @@ class AnyRouterLinuxDoSignIn {
 			const account = accounts[i];
 			console.log(`\n[处理] 开始处理账号 ${i + 1}/${accounts.length}`);
 
-			const result = await this.loginAndGetSession(
-				account.username,
-				account.password
-			);
+			const result = await this.loginAndGetSession(account.username, account.password);
 
 			results.push({
 				username: account.username,
 				success: result !== null,
-				data: result
+				data: result,
 			});
 
 			// 账号之间添加延迟，避免频繁操作
@@ -475,7 +461,6 @@ class AnyRouterLinuxDoSignIn {
 // 导出模块
 export default AnyRouterLinuxDoSignIn;
 
-// // 如果直接运行此文件，执行示例代码
 // (async () => {
 // 	const signin = new AnyRouterLinuxDoSignIn();
 
@@ -483,8 +468,8 @@ export default AnyRouterLinuxDoSignIn;
 // 	console.log('===== AnyRouter LinuxDo 登录签到测试 =====\n');
 
 // 	// 从环境变量或命令行参数获取账号信息
-// 	const username = process.env.LINUXDO_USERNAME || 'chendong';
-// 	const password = process.env.LINUXDO_PASSWORD || 'chendongCh';
+// 	const username = process.env.LINUXDO_USERNAME || 'yinjie1';
+// 	const password = process.env.LINUXDO_PASSWORD || 'yinjie1m65';
 
 // 	const result = await signin.loginAndGetSession(username, password);
 
