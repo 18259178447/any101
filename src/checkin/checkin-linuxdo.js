@@ -68,7 +68,7 @@ class AnyRouterLinuxDoSignIn {
 			context = await chromium.launchPersistentContext(
 				userDataDir,
 				getPersistentContextOptions(userDataDir,{
-					headless: true, // 有头模式，更难被检测
+					headless: false, // 有头模式，更难被检测
 				})
 			);
 

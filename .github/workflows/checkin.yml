@@ -5,7 +5,7 @@ on:
 
 jobs:
   checkin:
-    runs-on: ubuntu-latest  # 使用 Linux 环境，更适合 CI/CD
+    runs-on: windows-latest  # 使用 Windows 环境，支持有头模式
     timeout-minutes: 30  # 设置工作流超时时间为 30 分钟
     environment: production
 
@@ -72,14 +72,21 @@ jobs:
           ${{ runner.os }}-playwright-state-
 
     - name: 验证持久化状态缓存
+      shell: pwsh
       run: |
-        if [ -d ".playwright-state" ]; then
-          echo "✅ 恢复了持久化状态缓存"
-          echo "缓存目录大小: $(du -sh .playwright-state 2>/dev/null || echo '未知')"
-          echo "用户目录数量: $(find .playwright-state -maxdepth 1 -type d 2>/dev/null | wc -l)"
-        else
-          echo "ℹ️  首次运行,无持久化状态"
-        fi
+        if (Test-Path ".playwright-state") {
+          Write-Host "✅ 恢复了持久化状态缓存"
+          $size = (Get-ChildItem .playwright-state -Recurse -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum
+          if ($size) {
+            Write-Host "缓存目录大小: $([math]::Round($size/1MB, 2)) MB"
+          } else {
+            Write-Host "缓存目录大小: 未知"
+          }
+          $dirCount = (Get-ChildItem .playwright-state -Directory -ErrorAction SilentlyContinue).Count
+          Write-Host "用户目录数量: $dirCount"
+        } else {
+          Write-Host "ℹ️  首次运行,无持久化状态"
+        }
 
     - name: 执行签到
       timeout-minutes: 25  # 签到步骤单独设置超时
@@ -89,18 +96,20 @@ jobs:
         EMAIL_PASS: ${{ secrets.EMAIL_PASS }}
         EMAIL_TO: ${{ secrets.EMAIL_TO }}
         API_BASE_URL: ${{ secrets.API_BASE_URL }}
+        HEADLESS: false  # 启用有头模式
       run: |
         echo "开始执行签到任务..."
         npm start
 
     - name: 执行结果
       if: always()
+      shell: pwsh
       run: |
-        echo "签到任务执行完成"
-        echo "时间: $(date)"
-        if [ ${{ job.status }} == 'success' ]; then
-          echo "✅ 签到成功"
-        else
-          echo "❌ 签到失败"
+        Write-Host "签到任务执行完成"
+        Write-Host "时间: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
+        if ('${{ job.status }}' -eq 'success') {
+          Write-Host "✅ 签到成功"
+        } else {
+          Write-Host "❌ 签到失败"
           exit 1
-        fi
+        }
