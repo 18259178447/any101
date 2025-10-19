@@ -7,6 +7,7 @@ import AnyRouterSignIn from './checkin-username.js';
 import AnyRouterLinuxDoSignIn from './checkin-linuxdo.js';
 import AnyRouterGitHubSignIn from './checkin-github.js';
 import { updateAccountInfo as updateAccountInfoAPI } from '../api/index.js';
+import { fileURLToPath } from 'url';
 
 class UnifiedAnyRouterChecker {
 	/**
@@ -15,8 +16,8 @@ class UnifiedAnyRouterChecker {
 	constructor(accounts = null) {
 		this.accounts = accounts || this.loadAccounts();
 		this.signInModule = new AnyRouterSignIn();
-		this.linuxDoSignInModule = new AnyRouterLinuxDoSignIn();
 		this.githubSignInModule = new AnyRouterGitHubSignIn();
+		// LinuxDo 签到模块在需要时动态创建，因为需要传入不同的平台 URL
 	}
 
 	/**
@@ -140,54 +141,127 @@ class UnifiedAnyRouterChecker {
 	 */
 	async checkInWithLinuxDo(accountInfo) {
 		const accountName = accountInfo.username || accountInfo._id || '未知账号';
+		const checkinMode = accountInfo.checkin_mode || 3; // 默认值为3（两者都签到）
+		const currentErrorCount = accountInfo.checkin_error_count || 0;
 
-		console.log(`[登录] ${accountName}: 使用 LinuxDo 第三方登录签到`);
+		console.log(`[登录] ${accountName}: 使用 LinuxDo 第三方登录签到 (模式: ${checkinMode})`);
 
-		// 调用 LinuxDo 登录模块
-		const loginResult = await this.linuxDoSignInModule.loginAndGetSession(
-			accountInfo.username,
-			accountInfo.password,
-			accountInfo.cache_key
-		);
+		// 如果错误次数 > 2，删除持久化缓存并重置错误次数
+		if (currentErrorCount > 2) {
+			try {
+				console.log(`[清理] ${accountName}: 检测到错误次数 > 2 (${currentErrorCount})，清除持久化缓存...`);
 
-		if (loginResult) {
-			// 更新签到时间和余额信息
-			const updateData = {
-				checkin_date: Date.now(),
-			};
-			// 构建用户信息字符串
-			let userInfoText = null;
+				// 创建临时实例用于清除缓存（baseUrl 不重要，只用于调用 clearUserCache）
+				const tempModule = new AnyRouterLinuxDoSignIn('https://anyrouter.top');
+				tempModule.clearUserCache(accountInfo.username, accountInfo.cache_key || '');
 
-			// 如果成功获取用户信息，添加余额、已使用额度和推广码
-			if (loginResult.userInfo) {
-				updateData.balance = Math.round(loginResult.userInfo.quota / 500000);
-				updateData.used = Math.round((loginResult.userInfo.used_quota || 0) / 500000);
-				if (loginResult.userInfo.aff_code) {
-					updateData.aff_code = loginResult.userInfo.aff_code;
+				// 重置错误次数
+				await this.updateAccountInfo(accountInfo._id, {
+					checkin_error_count: 0,
+				});
+
+				console.log(`[清理] ${accountName}: 已清除缓存并重置错误次数，将重新尝试登录`);
+			} catch (e) {
+				console.log(`[清理错误] ${accountName}: 清除缓存并重置错误次数错误`);
+			}
+
+		}
+
+		const results = [];
+		const updateData = { checkin_date: Date.now() };
+
+		// 根据 checkin_mode 决定签到哪个平台
+		const platforms = [];
+		if (checkinMode === 1) {
+			platforms.push({ url: 'https://anyrouter.top', name: 'AnyRouter' });
+		} else if (checkinMode === 2) {
+			platforms.push({ url: 'https://agentrouter.org', name: 'AgentRouter' });
+		} else if (checkinMode === 3) {
+			platforms.push(
+				{ url: 'https://anyrouter.top', name: 'AnyRouter' },
+				{ url: 'https://agentrouter.org', name: 'AgentRouter' }
+			);
+		}
+
+		// 依次签到各个平台
+		for (const platform of platforms) {
+			console.log(`[签到] ${accountName}: 开始签到 ${platform.name}...`);
+
+			// 为每个平台创建独立的 LinuxDo 签到实例
+			const linuxDoSignInModule = new AnyRouterLinuxDoSignIn(platform.url);
+
+			// 调用 LinuxDo 登录模块
+			const loginResult = await linuxDoSignInModule.loginAndGetSession(
+				accountInfo.username,
+				accountInfo.password,
+				accountInfo.cache_key
+			);
+
+			if (loginResult && loginResult.userInfo) {
+				// AnyRouter 的余额存储到 balance
+				if (platform.name === 'AnyRouter') {
+					updateData.balance = Math.round(loginResult.userInfo.quota / 500000);
+					updateData.used = Math.round((loginResult.userInfo.used_quota || 0) / 500000);
+					if (loginResult.userInfo.aff_code) {
+						updateData.aff_code = loginResult.userInfo.aff_code;
+					}
+				}
+				// AgentRouter 的余额存储到 agentrouter_balance
+				else if (platform.name === 'AgentRouter') {
+					updateData.agentrouter_balance = Math.round(loginResult.userInfo.quota / 500000);
 				}
 
 				const quota = (loginResult.userInfo.quota / 500000).toFixed(2);
 				const usedQuota = (loginResult.userInfo.used_quota || 0) / 500000;
-				userInfoText = `💰 当前余额: $${quota}, 已使用: $${usedQuota.toFixed(2)}`;
+				const userInfoText = `💰 当前余额: $${quota}, 已使用: $${usedQuota.toFixed(2)}`;
+
+				results.push({
+					platform: platform.name,
+					success: true,
+					userInfo: userInfoText,
+				});
+
+				console.log(`[成功] ${accountName}: ${platform.name} 签到成功 - ${userInfoText}`);
+			} else {
+				results.push({
+					platform: platform.name,
+					success: false,
+					error: `${platform.name} 登录失败`,
+				});
+
+				console.error(`[失败] ${accountName}: ${platform.name} 签到失败`);
+
+				// 如果是两者都签到模式，且 AnyRouter 签到失败，则跳过后续平台签到
+				if (checkinMode === 3 && platform.name === 'AnyRouter') {
+					console.log(`[跳过] ${accountName}: AnyRouter 签到失败，跳过 AgentRouter 签到，等待下次一起重试`);
+					break;
+				}
 			}
-
-			// 更新账户信息
-			await this.updateAccountInfo(accountInfo._id, updateData);
-
-			return {
-				success: true,
-				account: accountName,
-				userInfo: userInfoText,
-				method: 'linuxdo',
-			};
-		} else {
-			return {
-				success: false,
-				account: accountName,
-				error: 'LinuxDo 登录失败',
-				method: 'linuxdo',
-			};
 		}
+
+		// 判断所有平台是否都签到成功
+		const allSuccess = results.every((r) => r.success);
+
+		// 更新签到错误次数
+		if (allSuccess) {
+			updateData.checkin_error_count = 0; // 签到成功，重置错误次数
+		} else {
+			updateData.checkin_error_count = currentErrorCount + 1; // 签到失败，增加错误次数
+		}
+
+		// 更新账户信息到服务端
+		await this.updateAccountInfo(accountInfo._id, updateData);
+
+		// 构建返回结果
+		const userInfoTexts = results.filter((r) => r.success).map((r) => `${r.platform}: ${r.userInfo}`);
+
+		return {
+			success: allSuccess,
+			account: accountName,
+			userInfo: userInfoTexts.length > 0 ? userInfoTexts.join('\n') : null,
+			method: 'linuxdo',
+			results, // 包含详细的签到结果
+		};
 	}
 
 	/**
@@ -195,55 +269,134 @@ class UnifiedAnyRouterChecker {
 	 */
 	async checkInWithGitHub(accountInfo) {
 		const accountName = accountInfo.username || accountInfo._id || '未知账号';
+		const checkinMode = accountInfo.checkin_mode || 3; // 默认值为3（两者都签到）
+		const currentErrorCount = accountInfo.checkin_error_count || 0;
 
-		console.log(`[登录] ${accountName}: 使用 GitHub 第三方登录签到`);
+		console.log(`[登录] ${accountName}: 使用 GitHub 第三方登录签到 (模式: ${checkinMode})`);
 
-		// 调用 GitHub 登录模块
-		const loginResult = await this.githubSignInModule.loginAndGetSession(
-			accountInfo._id,
-			accountInfo.username,
-			accountInfo.password,
-			accountInfo.notice_email
-		);
+		// 如果错误次数 > 2，删除持久化缓存并重置错误次数
+		if (currentErrorCount > 2) {
+			try {
+				console.log(`[清理] ${accountName}: 检测到错误次数 > 2 (${currentErrorCount})，清除持久化缓存...`);
 
-		if (loginResult) {
-			// 更新签到时间和余额信息
-			const updateData = {
-				checkin_date: Date.now(),
-			};
-			// 构建用户信息字符串
-			let userInfoText = null;
+				// 创建临时实例用于清除缓存（baseUrl 不重要，只用于调用 getUserDataDir）
+				const tempModule = new AnyRouterGitHubSignIn('https://anyrouter.top');
+				const userDataDir = tempModule.getUserDataDir(accountInfo.username);
 
-			// 如果成功获取用户信息，添加余额、已使用额度和推广码
-			if (loginResult.userInfo) {
-				updateData.balance = Math.round(loginResult.userInfo.quota / 500000);
-				updateData.used = Math.round((loginResult.userInfo.used_quota || 0) / 500000);
-				if (loginResult.userInfo.aff_code) {
-					updateData.aff_code = loginResult.userInfo.aff_code;
+				// 删除整个用户数据目录
+				const fs = await import('fs');
+				if (fs.existsSync(userDataDir)) {
+					fs.rmSync(userDataDir, { recursive: true, force: true });
+					console.log(`[清理] 已删除持久化缓存: ${userDataDir}`);
+				}
+
+				// 重置错误次数
+				await this.updateAccountInfo(accountInfo._id, {
+					checkin_error_count: 0,
+				});
+
+				console.log(`[清理] ${accountName}: 已清除缓存并重置错误次数，将重新尝试登录`);
+			} catch (e) {
+				console.log(`[清理错误] ${accountName}: 清除缓存并重置错误次数错误`);
+			}
+		}
+
+		const results = [];
+		const updateData = { checkin_date: Date.now() };
+
+		// 根据 checkin_mode 决定签到哪个平台
+		const platforms = [];
+		if (checkinMode === 1) {
+			platforms.push({ url: 'https://anyrouter.top', name: 'AnyRouter' });
+		} else if (checkinMode === 2) {
+			platforms.push({ url: 'https://agentrouter.org', name: 'AgentRouter' });
+		} else if (checkinMode === 3) {
+			platforms.push(
+				{ url: 'https://anyrouter.top', name: 'AnyRouter' },
+				{ url: 'https://agentrouter.org', name: 'AgentRouter' }
+			);
+		}
+
+		// 依次签到各个平台
+		for (const platform of platforms) {
+			console.log(`[签到] ${accountName}: 开始签到 ${platform.name}...`);
+
+			// 为每个平台创建独立的 GitHub 签到实例
+			const githubSignInModule = new AnyRouterGitHubSignIn(platform.url);
+
+			// 调用 GitHub 登录模块
+			const loginResult = await githubSignInModule.loginAndGetSession(
+				accountInfo._id,
+				accountInfo.username,
+				accountInfo.password,
+				accountInfo.notice_email
+			);
+
+			if (loginResult && loginResult.userInfo) {
+				// AnyRouter 的余额存储到 balance
+				if (platform.name === 'AnyRouter') {
+					updateData.balance = Math.round(loginResult.userInfo.quota / 500000);
+					updateData.used = Math.round((loginResult.userInfo.used_quota || 0) / 500000);
+					if (loginResult.userInfo.aff_code) {
+						updateData.aff_code = loginResult.userInfo.aff_code;
+					}
+				}
+				// AgentRouter 的余额存储到 agentrouter_balance
+				else if (platform.name === 'AgentRouter') {
+					updateData.agentrouter_balance = Math.round(loginResult.userInfo.quota / 500000);
 				}
 
 				const quota = (loginResult.userInfo.quota / 500000).toFixed(2);
 				const usedQuota = (loginResult.userInfo.used_quota || 0) / 500000;
-				userInfoText = `💰 当前余额: $${quota}, 已使用: $${usedQuota.toFixed(2)}`;
+				const userInfoText = `💰 当前余额: $${quota}, 已使用: $${usedQuota.toFixed(2)}`;
+
+				results.push({
+					platform: platform.name,
+					success: true,
+					userInfo: userInfoText,
+				});
+
+				console.log(`[成功] ${accountName}: ${platform.name} 签到成功 - ${userInfoText}`);
+			} else {
+				results.push({
+					platform: platform.name,
+					success: false,
+					error: `${platform.name} 登录失败`,
+				});
+
+				console.error(`[失败] ${accountName}: ${platform.name} 签到失败`);
+
+				// 如果是两者都签到模式，且 AnyRouter 签到失败，则跳过后续平台签到
+				if (checkinMode === 3 && platform.name === 'AnyRouter') {
+					console.log(`[跳过] ${accountName}: AnyRouter 签到失败，跳过 AgentRouter 签到，等待下次一起重试`);
+					break;
+				}
 			}
-
-			// 更新账户信息
-			await this.updateAccountInfo(accountInfo._id, updateData);
-
-			return {
-				success: true,
-				account: accountName,
-				userInfo: userInfoText,
-				method: 'github',
-			};
-		} else {
-			return {
-				success: false,
-				account: accountName,
-				error: 'GitHub 登录失败',
-				method: 'github',
-			};
 		}
+
+		// 判断所有平台是否都签到成功
+		const allSuccess = results.every((r) => r.success);
+
+		// 更新签到错误次数
+		if (allSuccess) {
+			updateData.checkin_error_count = 0; // 签到成功，重置错误次数
+		} else {
+			updateData.checkin_error_count = currentErrorCount + 1; // 签到失败，增加错误次数
+		}
+
+		// 更新账户信息到服务端
+		await this.updateAccountInfo(accountInfo._id, updateData);
+
+		// 构建返回结果
+		const userInfoTexts = results.filter((r) => r.success).map((r) => `${r.platform}: ${r.userInfo}`);
+
+		return {
+			success: allSuccess,
+			account: accountName,
+			userInfo: userInfoTexts.length > 0 ? userInfoTexts.join('\n') : null,
+			method: 'github',
+			results, // 包含详细的签到结果
+		};
 	}
 
 	/**
@@ -391,3 +544,44 @@ class UnifiedAnyRouterChecker {
 }
 
 export default UnifiedAnyRouterChecker;
+
+
+
+// 如果直接运行此文件，执行注册
+const isMainModule = fileURLToPath(import.meta.url) === process.argv[1];
+
+if (isMainModule) {
+	(async () => {
+		const testAccounts = [
+			{
+				"_id": "68f38292e2b826dcc6533771",
+				"used": 0,
+				"notes": "",
+				"balance": 150,
+				"is_sold": false,
+				"session": "",
+				"aff_code": "s51S",
+				"can_sell": true,
+				"password": "chenxi1pjv",
+				"username": "chenxi1",
+				"sell_date": 0,
+				"account_id": "",
+				"create_date": 1760789138803,
+				"update_date": 1760839320668,
+				"account_type": 1,
+				"checkin_date": 1760839318230,
+				"checkin_mode": 3,
+				"workflow_url": "https://github.com/18259178447/ay4",
+				"anyrouter_user_id": "official_user_001",
+				"agentrouter_balance": 0,
+				"checkin_error_count": 0,
+				"session_expire_time": 0
+			},
+		];
+		const checker = new UnifiedAnyRouterChecker(testAccounts);
+		const checkResult = await checker.run();
+		console.log('\n[最终结果]', JSON.stringify(checkResult, null, 2));
+	})();
+}
+
+

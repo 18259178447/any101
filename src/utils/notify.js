@@ -31,14 +31,14 @@ class NotificationKit {
 			secure: true,
 			auth: {
 				user: this.emailUser,
-				pass: this.emailPass
-			}
+				pass: this.emailPass,
+			},
 		});
 
 		const mailOptions = {
 			from: `AnyRouter Assistant <${this.emailUser}>`,
 			to: emailTo,
-			subject: title
+			subject: title,
 		};
 
 		if (msgType === 'html') {

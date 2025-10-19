@@ -62,7 +62,7 @@ async function main(testAccounts = null) {
 				const summary = [
 					'[统计] 签到结果统计:',
 					`[成功] 成功: ${group.successCount}/${group.totalCount}`,
-					`[失败] 失败: ${group.totalCount - group.successCount}/${group.totalCount}`
+					`[失败] 失败: ${group.totalCount - group.successCount}/${group.totalCount}`,
 				];
 
 				if (group.successCount === group.totalCount) {
@@ -76,13 +76,7 @@ async function main(testAccounts = null) {
 				const timeInfo = `[时间] 执行时间: ${new Date().toLocaleString('zh-CN')}`;
 
 				// 组合完整的通知内容
-				const fullNotifyContent = [
-					timeInfo,
-					'',
-					...notificationContent,
-					'',
-					...summary
-				].join('\n');
+				const fullNotifyContent = [timeInfo, '', ...notificationContent, '', ...summary].join('\n');
 
 				console.log(`\n[通知] 发送到邮箱: ${email}`);
 				console.log(fullNotifyContent);
@@ -114,7 +108,7 @@ async function main(testAccounts = null) {
 			const summary = [
 				'[统计] 签到结果统计:',
 				`[成功] 成功: ${checkResult.successCount}/${checkResult.totalCount}`,
-				`[失败] 失败: ${checkResult.totalCount - checkResult.successCount}/${checkResult.totalCount}`
+				`[失败] 失败: ${checkResult.totalCount - checkResult.successCount}/${checkResult.totalCount}`,
 			];
 
 			if (checkResult.successCount === checkResult.totalCount) {
@@ -128,13 +122,7 @@ async function main(testAccounts = null) {
 			const timeInfo = `[时间] 执行时间: ${new Date().toLocaleString('zh-CN')}`;
 
 			// 组合完整的通知内容
-			const fullNotifyContent = [
-				timeInfo,
-				'',
-				...notificationContent,
-				'',
-				...summary
-			].join('\n');
+			const fullNotifyContent = [timeInfo, '', ...notificationContent, '', ...summary].join('\n');
 
 			console.log('\n' + fullNotifyContent);
 
@@ -144,7 +132,6 @@ async function main(testAccounts = null) {
 
 		// 设置退出码
 		process.exit(checkResult.successCount > 0 ? 0 : 1);
-
 	} catch (error) {
 		console.error('[失败] 程序执行过程中发生错误:', error.message);
 		console.error(error.stack);

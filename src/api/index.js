@@ -7,5 +7,6 @@ export {
 	addOfficialAccount,
 	updateAccountInfo,
 	getAccountLoginInfo,
-	addAccountLoginInfo
+	addAccountLoginInfo,
 } from './account.js';
+export { getRandomApplication } from './application.js';

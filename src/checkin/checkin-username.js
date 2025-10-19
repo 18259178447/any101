@@ -4,10 +4,14 @@
  */
 
 import { chromium } from 'playwright';
-import { applyStealthToContext, getStealthArgs, getIgnoreDefaultArgs } from '../utils/playwright-stealth.js';
+import {
+	applyStealthToContext,
+	getStealthArgs,
+	getIgnoreDefaultArgs,
+} from '../utils/playwright-stealth.js';
 import path from 'path';
 import fs from 'fs';
-
+import { fileURLToPath } from 'url';
 class AnyRouterSignIn {
 	constructor() {
 		this.baseUrl = 'https://anyrouter.top';
@@ -42,7 +46,7 @@ class AnyRouterSignIn {
 	 */
 	async randomDelay(min = 500, max = 1500) {
 		const delay = this.getRandomDelay(min, max);
-		await new Promise(resolve => setTimeout(resolve, delay));
+		await new Promise((resolve) => setTimeout(resolve, delay));
 	}
 
 	/**
@@ -67,7 +71,8 @@ class AnyRouterSignIn {
 			context = await chromium.launchPersistentContext(userDataDir, {
 				headless: true,
 				viewport: { width: 1920, height: 1080 },
-				userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+				userAgent:
+					'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
 				locale: 'zh-CN',
 				timezoneId: 'Asia/Shanghai',
 				deviceScaleFactor: 1,
@@ -76,7 +81,7 @@ class AnyRouterSignIn {
 				permissions: ['geolocation', 'notifications'],
 				colorScheme: 'light',
 				args: getStealthArgs(),
-				ignoreDefaultArgs: getIgnoreDefaultArgs()
+				ignoreDefaultArgs: getIgnoreDefaultArgs(),
 			});
 
 			// 应用反检测脚本到上下文
@@ -98,7 +103,7 @@ class AnyRouterSignIn {
 				userSelfResolve = resolve;
 			});
 
-			page.on('response', async response => {
+			page.on('response', async (response) => {
 				const url = response.url();
 
 				// 监听登录接口响应
@@ -136,7 +141,7 @@ class AnyRouterSignIn {
 			console.log('[页面] 访问登录页面...');
 			await page.goto(`${this.baseUrl}/login`, {
 				waitUntil: 'networkidle',
-				timeout: 30000
+				timeout: 30000,
 			});
 
 			// 等待页面加载完成
@@ -176,7 +181,9 @@ class AnyRouterSignIn {
 				console.log('[检查] 检测邮箱登录按钮...');
 				try {
 					// 使用更精确的选择器查找包含邮箱图标和文本的按钮
-					const emailLoginButton = page.locator('button:has(span.semi-icon-mail):has-text("使用 邮箱或用户名 登录")');
+					const emailLoginButton = page.locator(
+						'button:has(span.semi-icon-mail):has-text("使用 邮箱或用户名 登录")'
+					);
 					const isEmailButtonVisible = await emailLoginButton.isVisible({ timeout: 3000 });
 
 					if (isEmailButtonVisible) {
@@ -229,7 +236,7 @@ class AnyRouterSignIn {
 				// 等待跳转到控制台页面
 				await page.waitForURL('**/console', {
 					timeout: 15000,
-					waitUntil: 'networkidle'
+					waitUntil: 'networkidle',
 				});
 
 				console.log('[成功] 登录成功，已跳转到控制台');
@@ -239,7 +246,7 @@ class AnyRouterSignIn {
 			console.log('[等待] 等待用户信息接口响应...');
 			const userSelfReceived = await Promise.race([
 				userSelfPromise,
-				new Promise(resolve => setTimeout(() => resolve(false), 10000))
+				new Promise((resolve) => setTimeout(() => resolve(false), 10000)),
 			]);
 
 			if (!userSelfReceived) {
@@ -275,7 +282,7 @@ class AnyRouterSignIn {
 						apiUser = userData.id ? String(userData.id) : null;
 						console.log(`[信息] 用户ID (api_user): ${apiUser}`);
 						console.log(`[信息] 用户名: ${userData.username}`);
-						console.log(`[警告] localStorage 数据可能不准确，建议使用 /api/user/self 接口数据`);
+						console.log('[警告] localStorage 数据可能不准确，建议使用 /api/user/self 接口数据');
 					} catch (e) {
 						console.log('[错误] 解析用户数据失败');
 					}
@@ -284,7 +291,7 @@ class AnyRouterSignIn {
 
 			// 获取当前页面的所有 cookies
 			const cookies = await context.cookies();
-			const sessionCookieFromPage = cookies.find(c => c.name === 'session');
+			const sessionCookieFromPage = cookies.find((c) => c.name === 'session');
 
 			if (sessionCookieFromPage) {
 				sessionCookie = sessionCookieFromPage.value;
@@ -307,7 +314,7 @@ class AnyRouterSignIn {
 				return {
 					session: sessionCookie,
 					apiUser: apiUser,
-					userInfo: userData
+					userInfo: userData,
 				};
 			} else {
 				console.log('[失败] 未能获取完整的认证信息');
@@ -315,7 +322,6 @@ class AnyRouterSignIn {
 				console.log(`  - api_user: ${apiUser ? '✓' : '✗'}`);
 				return null;
 			}
-
 		} catch (error) {
 			console.log(`[错误] 登录过程发生错误: ${error.message}`);
 			return null;
@@ -343,15 +349,12 @@ class AnyRouterSignIn {
 			const account = accounts[i];
 			console.log(`\n[处理] 开始处理账号 ${i + 1}/${accounts.length}`);
 
-			const result = await this.loginAndGetSession(
-				account.username,
-				account.password
-			);
+			const result = await this.loginAndGetSession(account.username, account.password);
 
 			results.push({
 				username: account.username,
 				success: result !== null,
-				data: result
+				data: result,
 			});
 
 			// 账号之间添加延迟，避免频繁操作
@@ -368,25 +371,32 @@ class AnyRouterSignIn {
 // 导出模块
 export default AnyRouterSignIn;
 
-// (async () => {
-// 		const signin = new AnyRouterSignIn();
+// 如果直接运行此文件，执行注册
+const isMainModule = fileURLToPath(import.meta.url) === process.argv[1];
 
-// 		// 示例：单个账号登录
-// 		console.log('===== AnyRouter 登录签到测试 =====\n');
+if (isMainModule) {
+	(async () => {
+		const signin = new AnyRouterSignIn();
 
-// 		// 从环境变量或命令行参数获取账号信息
-// 		const username = 'liyong2005';
-// 		const password = 'liyong2005';
+		// 示例：单个账号登录
+		console.log('===== AnyRouter 登录签到测试 =====\n');
 
-// 		const result = await signin.loginAndGetSession(username, password);
+		// 从环境变量或命令行参数获取账号信息
+		const username = 'liyong2005';
+		const password = 'liyong2005';
 
-// 		if (result) {
-// 			console.log('\n===== 登录成功，获取到以下信息 =====');
-// 			console.log(`Session: ${result.session.substring(0, 50)}...`);
-// 			console.log(`API User: ${result.apiUser}`);
-// 			console.log(`用户名: ${result.userInfo?.username}`);
-// 			console.log(`余额: $${(result.userInfo?.quota / 500000).toFixed(2)}`);
-// 		} else {
-// 			console.log('\n===== 登录失败 =====');
-// 		}
-// 	})();
+		const result = await signin.loginAndGetSession(username, password);
+
+		if (result) {
+			console.log('\n===== 登录成功，获取到以下信息 =====');
+			console.log(`Session: ${result.session.substring(0, 50)}...`);
+			console.log(`API User: ${result.apiUser}`);
+			console.log(`用户名: ${result.userInfo?.username}`);
+			console.log(`余额: $${(result.userInfo?.quota / 500000).toFixed(2)}`);
+		} else {
+			console.log('\n===== 登录失败 =====');
+		}
+	})();
+}
+
+

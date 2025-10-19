@@ -14,8 +14,8 @@ const apiClient = axios.create({
 	baseURL: process.env.API_BASE_URL || 'http://localhost:3000',
 	timeout: 30000,
 	headers: {
-		'Content-Type': 'application/json'
-	}
+		'Content-Type': 'application/json',
+	},
 });
 
 /**
@@ -42,7 +42,9 @@ apiClient.interceptors.response.use(
 	},
 	(error) => {
 		if (error.response) {
-			console.error(`[API错误] ${error.response.status} - ${error.response.data?.errMsg || error.message}`);
+			console.error(
+				`[API错误] ${error.response.status} - ${error.response.data?.errMsg || error.message}`
+			);
 		} else if (error.request) {
 			console.error('[API错误] 没有收到响应', error.message);
 		} else {
@@ -66,18 +68,18 @@ export async function handleApiResponse(apiPromise) {
 		if (data.errCode === 0) {
 			return {
 				success: true,
-				data: data.data
+				data: data.data,
 			};
 		} else {
 			return {
 				success: false,
-				error: data.errMsg || '未知错误'
+				error: data.errMsg || '未知错误',
 			};
 		}
 	} catch (error) {
 		return {
 			success: false,
-			error: error.response?.data?.errMsg || error.message
+			error: error.response?.data?.errMsg || error.message,
 		};
 	}
 }

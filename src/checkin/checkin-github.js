@@ -4,16 +4,21 @@
  */
 
 import { chromium } from 'playwright';
-import { applyStealthToContext, getStealthArgs, getIgnoreDefaultArgs } from '../utils/playwright-stealth.js';
+import {
+	applyStealthToContext,
+	getStealthArgs,
+	getIgnoreDefaultArgs,
+} from '../utils/playwright-stealth.js';
 import { addAccountLoginInfo, getAccountLoginInfo } from '../api/index.js';
 import NotificationKit from '../utils/notify.js';
 import path from 'path';
 import fs from 'fs';
 
 class AnyRouterGitHubSignIn {
-	constructor() {
-		this.baseUrl = 'https://anyrouter.top';
-		this.adminUrl = 'https://env-00jxtt8kw1jt-static.normal.cloudstatic.cn/admin/index.html#/pages/anyrouter-accounts/add-login-info';
+	constructor(baseUrl = 'https://anyrouter.top') {
+		this.baseUrl = baseUrl;
+		this.adminUrl =
+			'https://env-00jxtt8kw1jt-static.normal.cloudstatic.cn/admin/index.html#/pages/anyrouter-accounts/add-login-info';
 	}
 
 	/**
@@ -45,7 +50,7 @@ class AnyRouterGitHubSignIn {
 	 */
 	async randomDelay(min = 500, max = 1500) {
 		const delay = this.getRandomDelay(min, max);
-		await new Promise(resolve => setTimeout(resolve, delay));
+		await new Promise((resolve) => setTimeout(resolve, delay));
 	}
 
 	/**
@@ -73,7 +78,8 @@ class AnyRouterGitHubSignIn {
 			context = await chromium.launchPersistentContext(userDataDir, {
 				headless: true,
 				viewport: { width: 1920, height: 1080 },
-				userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+				userAgent:
+					'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
 				locale: 'zh-CN',
 				timezoneId: 'Asia/Shanghai',
 				deviceScaleFactor: 1,
@@ -82,7 +88,7 @@ class AnyRouterGitHubSignIn {
 				permissions: ['geolocation', 'notifications'],
 				colorScheme: 'light',
 				args: getStealthArgs(),
-				ignoreDefaultArgs: getIgnoreDefaultArgs()
+				ignoreDefaultArgs: getIgnoreDefaultArgs(),
 			});
 
 			// 应用反检测脚本到上下文
@@ -103,14 +109,14 @@ class AnyRouterGitHubSignIn {
 				userSelfResolve = resolve;
 			});
 
-			page.on('response', async response => {
+			page.on('response', async (response) => {
 				const url = response.url();
 
-				// 监听签到接口响应
-				if (url.includes('/api/user/sign_in')) {
-					console.log('[网络] 捕获签到接口响应');
-					signInResponse = await response.json().catch(() => null);
-				}
+				// 注释掉签到接口监听 - AnyRouter 和 AgentRouter 都不需要监听此接口
+				// if (url.includes('/api/user/sign_in')) {
+				// 	console.log('[网络] 捕获签到接口响应');
+				// 	signInResponse = await response.json().catch(() => null);
+				// }
 
 				// 监听用户信息接口响应
 				if (url.includes('/api/user/self')) {
@@ -122,9 +128,9 @@ class AnyRouterGitHubSignIn {
 
 			// 步骤1: 访问 AnyRouter 首页
 			console.log('[页面] 访问 AnyRouter 首页...');
-			await page.goto(`${this.baseUrl}`, {
+			await page.goto(`${this.baseUrl}/login`, {
 				waitUntil: 'networkidle',
-				timeout: 30000
+				timeout: 30000,
 			});
 
 			// 等待页面加载完成
@@ -143,7 +149,7 @@ class AnyRouterGitHubSignIn {
 					console.log('[导航] 跳转到 /console 页面...');
 					await page.goto(`${this.baseUrl}/console`, {
 						waitUntil: 'networkidle',
-						timeout: 15000
+						timeout: 15000,
 					});
 					await this.randomDelay(2000, 3000);
 				}
@@ -152,7 +158,7 @@ class AnyRouterGitHubSignIn {
 				console.log('[等待] 等待用户信息接口响应...');
 				const userSelfReceived = await Promise.race([
 					userSelfPromise,
-					new Promise(resolve => setTimeout(() => resolve(false), 10000))
+					new Promise((resolve) => setTimeout(() => resolve(false), 10000)),
 				]);
 
 				if (!userSelfReceived) {
@@ -169,7 +175,6 @@ class AnyRouterGitHubSignIn {
 
 			// 只有在登录页面才执行以下步骤
 			if (currentPageUrl.includes('/login')) {
-
 				// 步骤2: 检查并关闭系统公告弹窗
 				console.log('[检查] 检测系统公告弹窗...');
 				try {
@@ -238,17 +243,17 @@ class AnyRouterGitHubSignIn {
 				console.log(`[页面] 已切换到新标签页: ${page.url()}`);
 
 				// 在新页面上设置响应监听
-				page.on('response', async response => {
+				page.on('response', async (response) => {
 					const url = response.url();
 					console.log(`[网络] 捕获响应: ${url}`);
-					// 监听签到接口响应
-					if (url === "https://anyrouter.top/api/user/sign_in") {
-						console.log('[网络] 捕获签到接口响应');
-						signInResponse = await response.json().catch(() => null);
-					}
+					// 注释掉签到接口监听 - AnyRouter 和 AgentRouter 都不需要监听此接口
+					// if (url === `${this.baseUrl}/api/user/sign_in`) {
+					// 	console.log('[网络] 捕获签到接口响应');
+					// 	signInResponse = await response.json().catch(() => null);
+					// }
 
 					// 监听用户信息接口响应
-					if (url === "https://anyrouter.top/api/user/self") {
+					if (url === `${this.baseUrl}/api/user/self`) {
 						console.log('[网络] 捕获用户信息接口响应');
 						userSelfResponse = await response.json().catch(() => null);
 						userSelfResolve(true); // 通知已收到响应
@@ -363,7 +368,7 @@ class AnyRouterGitHubSignIn {
 								// 调用 getAccountLoginInfo 接口查询
 								const getResult = await getAccountLoginInfo({
 									login_info_id: loginInfoId,
-									account_id: accountId
+									account_id: accountId,
 								});
 
 								if (getResult.success && getResult.data) {
@@ -400,7 +405,6 @@ class AnyRouterGitHubSignIn {
 							// 等待验证完成并跳转
 							console.log('[等待] 等待设备验证完成...');
 							await this.randomDelay(5000, 7000);
-
 						} else {
 							console.log(`[错误] 调用 addAccountLoginInfo 失败: ${addResult.error}`);
 							return null;
@@ -411,7 +415,6 @@ class AnyRouterGitHubSignIn {
 					} else {
 						console.log(`[警告] 未按预期跳转，当前URL: ${afterLoginUrl}`);
 					}
-
 				} else if (currentUrl.includes('oauth/authorize')) {
 					// 已经登录，直接到达授权页面
 					console.log('[GitHub] 已登录，进入授权页面');
@@ -434,7 +437,7 @@ class AnyRouterGitHubSignIn {
 					console.log('[导航] 检测到在 /console/token 页面，跳转到 /console 触发接口...');
 					await page.goto(`${this.baseUrl}/console`, {
 						waitUntil: 'networkidle',
-						timeout: 15000
+						timeout: 15000,
 					});
 					console.log('[成功] 已跳转到控制台页面');
 					await this.randomDelay(2000, 3000);
@@ -444,13 +447,12 @@ class AnyRouterGitHubSignIn {
 				console.log('[等待] 等待用户信息接口响应...');
 				const userSelfReceived2 = await Promise.race([
 					userSelfPromise,
-					new Promise(resolve => setTimeout(() => resolve(false), 10000))
+					new Promise((resolve) => setTimeout(() => resolve(false), 10000)),
 				]);
 
 				if (!userSelfReceived2) {
 					console.log('[警告] 等待 /api/user/self 接口超时，将使用备用方案');
 				}
-
 			} // 结束 if (currentPageUrl.includes('/login')) 代码块
 
 			// 步骤7: 获取用户信息
@@ -491,7 +493,7 @@ class AnyRouterGitHubSignIn {
 
 			// 获取当前页面的所有 cookies
 			const cookies = await context.cookies();
-			const sessionCookieFromPage = cookies.find(c => c.name === 'session');
+			const sessionCookieFromPage = cookies.find((c) => c.name === 'session');
 
 			if (sessionCookieFromPage) {
 				sessionCookie = sessionCookieFromPage.value;
@@ -514,7 +516,7 @@ class AnyRouterGitHubSignIn {
 				return {
 					session: sessionCookie,
 					apiUser: apiUser,
-					userInfo: userData
+					userInfo: userData,
 				};
 			} else {
 				console.log('[失败] 未能获取完整的认证信息');
@@ -522,7 +524,6 @@ class AnyRouterGitHubSignIn {
 				console.log(`  - api_user: ${apiUser ? '✓' : '✗'}`);
 				return null;
 			}
-
 		} catch (error) {
 			console.log(`[错误] 登录过程发生错误: ${error.message}`);
 			console.log('[错误详情]', error.stack);
@@ -530,6 +531,40 @@ class AnyRouterGitHubSignIn {
 		} finally {
 			// 确保清理资源（会自动保存状态）
 			try {
+				// 如果是 AgentRouter，清除该域名的缓存（下次签到需要重新登录才有效）
+				if (this.baseUrl.includes('agentrouter.org')) {
+					console.log('[清理] 检测到 AgentRouter 签到，清除该域名缓存...');
+
+					// 清除 AgentRouter 域名的 cookies
+					if (context) {
+						const allCookies = await context.cookies();
+						const agentRouterCookies = allCookies.filter(cookie =>
+							cookie.domain.includes('agentrouter.org')
+						);
+
+						if (agentRouterCookies.length > 0) {
+							await context.clearCookies();
+							// 重新添加非 AgentRouter 的 cookies
+							const otherCookies = allCookies.filter(cookie =>
+								!cookie.domain.includes('agentrouter.org')
+							);
+							if (otherCookies.length > 0) {
+								await context.addCookies(otherCookies);
+							}
+							console.log(`[清理] 已清除 ${agentRouterCookies.length} 个 AgentRouter cookies`);
+						}
+					}
+
+					// 清除 AgentRouter 域名的 localStorage（当前页面已在 agentrouter.org 域名下）
+					if (page && !page.isClosed()) {
+						await page.evaluate(() => {
+							localStorage.clear();
+							sessionStorage.clear();
+						}).catch(() => { });
+						console.log('[清理] 已清除 AgentRouter localStorage 和 sessionStorage');
+					}
+				}
+
 				if (page && !page.isClosed()) await page.close();
 				if (context) await context.close(); // 自动保存所有 cookies 和 localStorage
 				console.log('[存储] 浏览器状态已自动保存');
@@ -562,7 +597,7 @@ class AnyRouterGitHubSignIn {
 				account_id: account.account_id,
 				username: account.username,
 				success: result !== null,
-				data: result
+				data: result,
 			});
 
 			// 账号之间添加延迟，避免频繁操作

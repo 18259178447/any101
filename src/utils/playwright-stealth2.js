@@ -118,7 +118,7 @@ export function getIgnoreDefaultArgs() {
  * @param {string} userDataDir - 用户数据目录
  * @returns {object} 浏览器上下文配置对象
  */
-export function getPersistentContextOptions(userDataDir,options = {}) {
+export function getPersistentContextOptions(userDataDir, options = {}) {
 	return {
 		headless: false, // 建议使用有头模式，更难被检测
 		args: getStealthArgs(),
@@ -135,7 +135,7 @@ export function getPersistentContextOptions(userDataDir,options = {}) {
 		bypassCSP: true,
 		acceptDownloads: true,
 		colorScheme: 'light',
-		...options
+		...options,
 	};
 }
 

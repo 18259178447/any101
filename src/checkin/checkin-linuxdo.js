@@ -4,10 +4,10 @@
  */
 
 import { chromium } from 'playwright';
-import { applyStealthToPage, getPersistentContextOptions } from '../utils/playwright-stealth2.js';
+import { PlaywrightAntiFingerprintPlugin } from '../utils/playwright-anti-fingerprint-plugin.js';
 import path from 'path';
 import fs from 'fs';
-
+import { fileURLToPath } from 'url';
 class AnyRouterLinuxDoSignIn {
 	constructor(baseUrl = 'https://anyrouter.top') {
 		this.baseUrl = baseUrl;
@@ -17,9 +17,10 @@ class AnyRouterLinuxDoSignIn {
 	/**
 	 * 获取用户的持久化存储目录
 	 * @param {string} username - LinuxDo 用户名
+	 * @param {string} cacheKey - 缓存键（可选）
 	 * @returns {string} - 用户数据目录路径
 	 */
-	getUserDataDir(username, cacheKey = "") {
+	getUserDataDir(username, cacheKey = '') {
 		const storageDir = path.join(process.cwd(), '.playwright-state');
 		const userDir = path.join(storageDir, `linuxdo_${username}${cacheKey}`);
 
@@ -29,6 +30,30 @@ class AnyRouterLinuxDoSignIn {
 		}
 
 		return userDir;
+	}
+
+	/**
+	 * 删除用户的持久化缓存
+	 * @param {string} username - LinuxDo 用户名
+	 * @param {string} cacheKey - 缓存键（可选）
+	 * @returns {boolean} - 删除是否成功
+	 */
+	clearUserCache(username, cacheKey = '') {
+		try {
+			const userDir = this.getUserDataDir(username, cacheKey);
+
+			if (fs.existsSync(userDir)) {
+				fs.rmSync(userDir, { recursive: true, force: true });
+				console.log(`[清理] 已删除持久化缓存: ${userDir}`);
+				return true;
+			} else {
+				console.log(`[清理] 持久化缓存不存在: ${userDir}`);
+				return false;
+			}
+		} catch (error) {
+			console.error(`[错误] 删除持久化缓存失败: ${error.message}`);
+			return false;
+		}
 	}
 
 	/**
@@ -50,10 +75,11 @@ class AnyRouterLinuxDoSignIn {
 	 * 通过 LinuxDo 第三方登录获取 session 和 api_user
 	 * @param {string} username - LinuxDo 用户名
 	 * @param {string} password - LinuxDo 密码
+	 * @param {string} cacheKey - 缓存键（可选）
 	 * @returns {Object|null} - { session: string, apiUser: string, userInfo: object }
 	 */
-	async loginAndGetSession(username, password, cacheKey = "") {
-		console.log(`[登录签到] 开始处理 LinuxDo 账号: ${username}`);
+	async loginAndGetSession(username, password, cacheKey = '') {
+		console.log(`[登录签到] 开始处理 LinuxDo 账号: ${username} -> ${this.baseUrl}`);
 
 		let context = null;
 		let page = null;
@@ -62,22 +88,28 @@ class AnyRouterLinuxDoSignIn {
 			// 获取用户专属数据目录
 			const userDataDir = this.getUserDataDir(username, cacheKey);
 			console.log(`[浏览器] 使用持久化上下文: ${userDataDir}`);
-			console.log('[浏览器] 启动 Chromium 浏览器（持久化模式，已启用反检测）...');
+			console.log('[浏览器] 启动 Chromium 浏览器（持久化模式，已启用反检测和反指纹）...');
 
-			// 启动持久化浏览器上下文（使用统一配置）
-			context = await chromium.launchPersistentContext(
-				userDataDir,
-				getPersistentContextOptions(userDataDir,{
-					headless: false, // 有头模式，更难被检测
-				})
-			);
+			// 创建反指纹插件实例（启用跨标签页一致性）
+			// 不传入 sessionSeed，让插件生成随机种子，首次运行后会持久化到 localStorage
+			const antiFingerprintPlugin = new PlaywrightAntiFingerprintPlugin({
+				debug: false,
+				crossTabConsistency: true, // 启用跨会话一致性，种子会被持久化
+				// sessionSeed 不设置，使用 Math.random() 生成随机种子
+				heartbeatInterval: 2000,
+				sessionTimeout: 5000
+			});
+			context = await chromium.launchPersistentContext(userDataDir, PlaywrightAntiFingerprintPlugin.getLaunchOptions({
+				headless: false, // 非无头模式，需要用户手动过人机验证
+			}));
+
+			// 应用反指纹插件到浏览器上下文
+			await antiFingerprintPlugin.apply(context);
+			console.log('[指纹] 反指纹保护已应用');
 
 			// 获取或创建页面
 			const pages = context.pages();
 			page = pages.length > 0 ? pages[0] : await context.newPage();
-
-			// 应用反检测脚本到页面
-			await applyStealthToPage(page);
 
 			// 设置请求拦截，监听登录和签到接口
 			let signInResponse = null;
@@ -93,11 +125,11 @@ class AnyRouterLinuxDoSignIn {
 			page.on('response', async (response) => {
 				const url = response.url();
 
-				// 监听签到接口响应
-				if (url.includes('/api/user/sign_in')) {
-					console.log('[网络] 捕获签到接口响应');
-					signInResponse = await response.json().catch(() => null);
-				}
+				// 注释掉签到接口监听 - AnyRouter 和 AgentRouter 都不需要监听此接口
+				// if (url.includes('/api/user/sign_in')) {
+				// 	console.log('[网络] 捕获签到接口响应');
+				// 	signInResponse = await response.json().catch(() => null);
+				// }
 
 				// 监听用户信息接口响应
 				if (url.includes('/api/user/self')) {
@@ -107,9 +139,9 @@ class AnyRouterLinuxDoSignIn {
 				}
 			});
 
-			// 步骤1: 访问 AnyRouter 首页
-			console.log('[页面] 访问 AnyRouter 首页...');
-			await page.goto(`${this.baseUrl}`, {
+			// 步骤1: 访问登录页面
+			console.log('[页面] 访问登录页面...');
+			await page.goto(`${this.baseUrl}/login`, {
 				waitUntil: 'networkidle',
 				timeout: 30000,
 			});
@@ -123,7 +155,7 @@ class AnyRouterLinuxDoSignIn {
 
 			// 如果已经在 /console 页面,说明已登录,直接跳到获取用户信息步骤
 			if (currentPageUrl.includes('/console')) {
-				console.log('[检测] AnyRouter 已登录,跳过 LinuxDo 登录流程');
+				console.log('[检测] 已登录,跳过 LinuxDo 登录流程');
 
 				// 如果在 /console/token 等子页面,跳转到 /console
 				if (!currentPageUrl.endsWith('/console')) {
@@ -150,7 +182,7 @@ class AnyRouterLinuxDoSignIn {
 				// 使用标签跳转(通过设置变量控制流程)
 			} else if (currentPageUrl.includes('/login') || currentPageUrl.includes('/register?aff=')) {
 				// 未登录,在登录页面,继续 LinuxDo 登录流程
-				console.log('[检测] AnyRouter 未登录,开始 LinuxDo 登录流程');
+				console.log('[检测] 未登录,开始 LinuxDo 登录流程');
 			} else {
 				console.log(`[警告] 未预期的页面: ${currentPageUrl}`);
 			}
@@ -229,13 +261,13 @@ class AnyRouterLinuxDoSignIn {
 					const url = response.url();
 					console.log(`[网络] 捕获响应: ${url}`);
 					// 监听签到接口响应
-					if (url === 'https://anyrouter.top/api/user/sign_in') {
+					if (url === `${this.baseUrl}/api/user/sign_in`) {
 						console.log('[网络] 捕获签到接口响应');
 						signInResponse = await response.json().catch(() => null);
 					}
 
 					// 监听用户信息接口响应
-					if (url === 'https://anyrouter.top/api/user/self') {
+					if (url === `${this.baseUrl}/api/user/self`) {
 						console.log('[网络] 捕获用户信息接口响应');
 						userSelfResponse = await response.json().catch(() => null);
 						userSelfResolve(true); // 通知已收到响应
@@ -254,7 +286,7 @@ class AnyRouterLinuxDoSignIn {
 					console.log('[LinuxDo] 检测到需要登录，开始填写 LinuxDo 账号...');
 
 					// 等待登录表单加载
-					await page.waitForSelector('#login-account-name', { timeout: 10000 });
+					await page.waitForSelector('#login-account-name', { timeout: 20000 });
 					await this.randomDelay(500, 1000);
 
 					// 输入用户名
@@ -418,6 +450,40 @@ class AnyRouterLinuxDoSignIn {
 		} finally {
 			// 确保清理资源（会自动保存状态）
 			try {
+				// 如果是 AgentRouter，清除该域名的缓存（下次签到需要重新登录才有效）
+				if (this.baseUrl.includes('agentrouter.org')) {
+					console.log('[清理] 检测到 AgentRouter 签到，清除该域名缓存...');
+
+					// 清除 AgentRouter 域名的 cookies
+					if (context) {
+						const allCookies = await context.cookies();
+						const agentRouterCookies = allCookies.filter(cookie =>
+							cookie.domain.includes('agentrouter.org')
+						);
+
+						if (agentRouterCookies.length > 0) {
+							await context.clearCookies();
+							// 重新添加非 AgentRouter 的 cookies
+							const otherCookies = allCookies.filter(cookie =>
+								!cookie.domain.includes('agentrouter.org')
+							);
+							if (otherCookies.length > 0) {
+								await context.addCookies(otherCookies);
+							}
+							console.log(`[清理] 已清除 ${agentRouterCookies.length} 个 AgentRouter cookies`);
+						}
+					}
+
+					// 清除 AgentRouter 域名的 localStorage（当前页面已在 agentrouter.org 域名下）
+					if (page && !page.isClosed()) {
+						await page.evaluate(() => {
+							localStorage.clear();
+							sessionStorage.clear();
+						}).catch(() => { });
+						console.log('[清理] 已清除 AgentRouter localStorage 和 sessionStorage');
+					}
+				}
+
 				if (page && !page.isClosed()) await page.close();
 				if (context) await context.close(); // 自动保存所有 cookies 和 localStorage
 				console.log('[存储] 浏览器状态已自动保存');
@@ -461,25 +527,32 @@ class AnyRouterLinuxDoSignIn {
 // 导出模块
 export default AnyRouterLinuxDoSignIn;
 
-// (async () => {
-// 	const signin = new AnyRouterLinuxDoSignIn();
 
-// 	// 示例：单个账号登录
-// 	console.log('===== AnyRouter LinuxDo 登录签到测试 =====\n');
+// 如果直接运行此文件，执行注册
+const isMainModule = fileURLToPath(import.meta.url) === process.argv[1];
 
-// 	// 从环境变量或命令行参数获取账号信息
-// 	const username = process.env.LINUXDO_USERNAME || 'yinjie1';
-// 	const password = process.env.LINUXDO_PASSWORD || 'yinjie1m65';
+if (isMainModule) {
+	(async () => {
+		const signin = new AnyRouterLinuxDoSignIn();
 
-// 	const result = await signin.loginAndGetSession(username, password);
+		// 示例：单个账号登录
+		console.log('===== AnyRouter LinuxDo 登录签到测试 =====\n');
 
-// 	if (result) {
-// 		console.log('\n===== 登录成功，获取到以下信息 =====');
-// 		console.log(`Session: ${result.session.substring(0, 50)}...`);
-// 		console.log(`API User: ${result.apiUser}`);
-// 		console.log(`用户名: ${result.userInfo?.username}`);
-// 		console.log(`余额: $${(result.userInfo?.quota / 500000).toFixed(2)}`);
-// 	} else {
-// 		console.log('\n===== 登录失败 =====');
-// 	}
-// })();
+		// 从环境变量或命令行参数获取账号信息
+		const username = process.env.LINUXDO_USERNAME || 'yujie1';
+		const password = process.env.LINUXDO_PASSWORD || 'yujie1i4z6';
+
+		const result = await signin.loginAndGetSession(username, password);
+
+		if (result) {
+			console.log('\n===== 登录成功，获取到以下信息 =====');
+			console.log(`Session: ${result.session.substring(0, 50)}...`);
+			console.log(`API User: ${result.apiUser}`);
+			console.log(`用户名: ${result.userInfo?.username}`);
+			console.log(`余额: $${(result.userInfo?.quota / 500000).toFixed(2)}`);
+		} else {
+			console.log('\n===== 登录失败 =====');
+		}
+	})();
+}
+
