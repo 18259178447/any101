@@ -398,5 +398,3 @@ if (isMainModule) {
 		}
 	})();
 }
-
-

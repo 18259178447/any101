@@ -5,55 +5,11 @@
 
 import { chromium } from 'playwright';
 import { PlaywrightAntiFingerprintPlugin } from '../utils/playwright-anti-fingerprint-plugin.js';
-import path from 'path';
-import fs from 'fs';
 import { fileURLToPath } from 'url';
 class AnyRouterLinuxDoSignIn {
 	constructor(baseUrl = 'https://anyrouter.top') {
 		this.baseUrl = baseUrl;
 		this.linuxDoUrl = 'https://linux.do';
-	}
-
-	/**
-	 * 获取用户的持久化存储目录
-	 * @param {string} username - LinuxDo 用户名
-	 * @param {string} cacheKey - 缓存键（可选）
-	 * @returns {string} - 用户数据目录路径
-	 */
-	getUserDataDir(username, cacheKey = '') {
-		const storageDir = path.join(process.cwd(), '.playwright-state');
-		const userDir = path.join(storageDir, `linuxdo_${username}${cacheKey}`);
-
-		// 确保目录存在
-		if (!fs.existsSync(storageDir)) {
-			fs.mkdirSync(storageDir, { recursive: true });
-		}
-
-		return userDir;
-	}
-
-	/**
-	 * 删除用户的持久化缓存
-	 * @param {string} username - LinuxDo 用户名
-	 * @param {string} cacheKey - 缓存键（可选）
-	 * @returns {boolean} - 删除是否成功
-	 */
-	clearUserCache(username, cacheKey = '') {
-		try {
-			const userDir = this.getUserDataDir(username, cacheKey);
-
-			if (fs.existsSync(userDir)) {
-				fs.rmSync(userDir, { recursive: true, force: true });
-				console.log(`[清理] 已删除持久化缓存: ${userDir}`);
-				return true;
-			} else {
-				console.log(`[清理] 持久化缓存不存在: ${userDir}`);
-				return false;
-			}
-		} catch (error) {
-			console.error(`[错误] 删除持久化缓存失败: ${error.message}`);
-			return false;
-		}
 	}
 
 	/**
@@ -75,41 +31,39 @@ class AnyRouterLinuxDoSignIn {
 	 * 通过 LinuxDo 第三方登录获取 session 和 api_user
 	 * @param {string} username - LinuxDo 用户名
 	 * @param {string} password - LinuxDo 密码
-	 * @param {string} cacheKey - 缓存键（可选）
 	 * @returns {Object|null} - { session: string, apiUser: string, userInfo: object }
 	 */
-	async loginAndGetSession(username, password, cacheKey = '') {
+	async loginAndGetSession(username, password) {
 		console.log(`[登录签到] 开始处理 LinuxDo 账号: ${username} -> ${this.baseUrl}`);
 
+		let browser = null;
 		let context = null;
 		let page = null;
 
 		try {
-			// 获取用户专属数据目录
-			const userDataDir = this.getUserDataDir(username, cacheKey);
-			console.log(`[浏览器] 使用持久化上下文: ${userDataDir}`);
-			console.log('[浏览器] 启动 Chromium 浏览器（持久化模式，已启用反检测和反指纹）...');
+			console.log('[浏览器] 启动 Chromium 浏览器（已启用反检测和反指纹）...');
 
-			// 创建反指纹插件实例（启用跨标签页一致性）
-			// 不传入 sessionSeed，让插件生成随机种子，首次运行后会持久化到 localStorage
+			// 创建反指纹插件实例
 			const antiFingerprintPlugin = new PlaywrightAntiFingerprintPlugin({
 				debug: false,
-				crossTabConsistency: true, // 启用跨会话一致性，种子会被持久化
-				// sessionSeed 不设置，使用 Math.random() 生成随机种子
+				crossTabConsistency: false, // 非持久化模式不需要跨会话一致性
 				heartbeatInterval: 2000,
-				sessionTimeout: 5000
+				sessionTimeout: 5000,
 			});
-			context = await chromium.launchPersistentContext(userDataDir, PlaywrightAntiFingerprintPlugin.getLaunchOptions({
-				headless: false, // 非无头模式，需要用户手动过人机验证
-			}));
 
-			// 应用反指纹插件到浏览器上下文
-			await antiFingerprintPlugin.apply(context);
+			// 启动浏览器
+			browser = await chromium.launch(
+				PlaywrightAntiFingerprintPlugin.getLaunchOptions({
+					headless: false, // 非无头模式，需要用户手动过人机验证
+				})
+			);
+
+			// 创建浏览器上下文
+			context = await browser.newContext();
 			console.log('[指纹] 反指纹保护已应用');
 
-			// 获取或创建页面
-			const pages = context.pages();
-			page = pages.length > 0 ? pages[0] : await context.newPage();
+			// 创建页面
+			page = await context.newPage();
 
 			// 设置请求拦截，监听登录和签到接口
 			let signInResponse = null;
@@ -448,45 +402,12 @@ class AnyRouterLinuxDoSignIn {
 			console.log(`[错误] 登录过程发生错误: ${error.message}`);
 			return null;
 		} finally {
-			// 确保清理资源（会自动保存状态）
+			// 清理资源
 			try {
-				// 如果是 AgentRouter，清除该域名的缓存（下次签到需要重新登录才有效）
-				if (this.baseUrl.includes('agentrouter.org')) {
-					console.log('[清理] 检测到 AgentRouter 签到，清除该域名缓存...');
-
-					// 清除 AgentRouter 域名的 cookies
-					if (context) {
-						const allCookies = await context.cookies();
-						const agentRouterCookies = allCookies.filter(cookie =>
-							cookie.domain.includes('agentrouter.org')
-						);
-
-						if (agentRouterCookies.length > 0) {
-							await context.clearCookies();
-							// 重新添加非 AgentRouter 的 cookies
-							const otherCookies = allCookies.filter(cookie =>
-								!cookie.domain.includes('agentrouter.org')
-							);
-							if (otherCookies.length > 0) {
-								await context.addCookies(otherCookies);
-							}
-							console.log(`[清理] 已清除 ${agentRouterCookies.length} 个 AgentRouter cookies`);
-						}
-					}
-
-					// 清除 AgentRouter 域名的 localStorage（当前页面已在 agentrouter.org 域名下）
-					if (page && !page.isClosed()) {
-						await page.evaluate(() => {
-							localStorage.clear();
-							sessionStorage.clear();
-						}).catch(() => { });
-						console.log('[清理] 已清除 AgentRouter localStorage 和 sessionStorage');
-					}
-				}
-
 				if (page && !page.isClosed()) await page.close();
-				if (context) await context.close(); // 自动保存所有 cookies 和 localStorage
-				console.log('[存储] 浏览器状态已自动保存');
+				if (context) await context.close();
+				if (browser) await browser.close();
+				console.log('[清理] 浏览器资源已关闭');
 			} catch (cleanupError) {
 				console.log(`[警告] 清理浏览器资源时出错: ${cleanupError.message}`);
 			}
@@ -527,7 +448,6 @@ class AnyRouterLinuxDoSignIn {
 // 导出模块
 export default AnyRouterLinuxDoSignIn;
 
-
 // 如果直接运行此文件，执行注册
 const isMainModule = fileURLToPath(import.meta.url) === process.argv[1];
 
@@ -555,4 +475,3 @@ if (isMainModule) {
 		}
 	})();
 }
-

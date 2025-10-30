@@ -538,15 +538,15 @@ class AnyRouterGitHubSignIn {
 					// 清除 AgentRouter 域名的 cookies
 					if (context) {
 						const allCookies = await context.cookies();
-						const agentRouterCookies = allCookies.filter(cookie =>
+						const agentRouterCookies = allCookies.filter((cookie) =>
 							cookie.domain.includes('agentrouter.org')
 						);
 
 						if (agentRouterCookies.length > 0) {
 							await context.clearCookies();
 							// 重新添加非 AgentRouter 的 cookies
-							const otherCookies = allCookies.filter(cookie =>
-								!cookie.domain.includes('agentrouter.org')
+							const otherCookies = allCookies.filter(
+								(cookie) => !cookie.domain.includes('agentrouter.org')
 							);
 							if (otherCookies.length > 0) {
 								await context.addCookies(otherCookies);
@@ -557,10 +557,12 @@ class AnyRouterGitHubSignIn {
 
 					// 清除 AgentRouter 域名的 localStorage（当前页面已在 agentrouter.org 域名下）
 					if (page && !page.isClosed()) {
-						await page.evaluate(() => {
-							localStorage.clear();
-							sessionStorage.clear();
-						}).catch(() => { });
+						await page
+							.evaluate(() => {
+								localStorage.clear();
+								sessionStorage.clear();
+							})
+							.catch(() => {});
 						console.log('[清理] 已清除 AgentRouter localStorage 和 sessionStorage');
 					}
 				}

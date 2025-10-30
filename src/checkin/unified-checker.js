@@ -6,6 +6,7 @@
 import AnyRouterSignIn from './checkin-username.js';
 import AnyRouterLinuxDoSignIn from './checkin-linuxdo.js';
 import AnyRouterGitHubSignIn from './checkin-github.js';
+import AnyRouterSessionSignIn from './checkin-session.js';
 import { updateAccountInfo as updateAccountInfoAPI } from '../api/index.js';
 import { fileURLToPath } from 'url';
 
@@ -17,6 +18,7 @@ class UnifiedAnyRouterChecker {
 		this.accounts = accounts || this.loadAccounts();
 		this.signInModule = new AnyRouterSignIn();
 		this.githubSignInModule = new AnyRouterGitHubSignIn();
+		this.sessionSignInModule = new AnyRouterSessionSignIn();
 		// LinuxDo 签到模块在需要时动态创建，因为需要传入不同的平台 URL
 	}
 
@@ -104,6 +106,16 @@ class UnifiedAnyRouterChecker {
 			// 构建用户信息字符串
 			let userInfoText = null;
 
+			// 更新 session 和 account_id
+			if (loginResult.session) {
+				updateData.session = loginResult.session;
+				// session 有效期设置为 30 天
+				updateData.session_expire_time = Date.now() + 30 * 24 * 60 * 60 * 1000;
+			}
+			if (loginResult.apiUser) {
+				updateData.account_id = loginResult.apiUser;
+			}
+
 			// 如果成功获取用户信息，添加余额、已使用额度和推广码
 			if (loginResult.userInfo) {
 				updateData.balance = Math.round(loginResult.userInfo.quota / 500000);
@@ -149,7 +161,9 @@ class UnifiedAnyRouterChecker {
 		// 如果错误次数 > 2，删除持久化缓存并重置错误次数
 		if (currentErrorCount > 2) {
 			try {
-				console.log(`[清理] ${accountName}: 检测到错误次数 > 2 (${currentErrorCount})，清除持久化缓存...`);
+				console.log(
+					`[清理] ${accountName}: 检测到错误次数 > 2 (${currentErrorCount})，清除持久化缓存...`
+				);
 
 				// 创建临时实例用于清除缓存（baseUrl 不重要，只用于调用 clearUserCache）
 				const tempModule = new AnyRouterLinuxDoSignIn('https://anyrouter.top');
@@ -164,7 +178,6 @@ class UnifiedAnyRouterChecker {
 			} catch (e) {
 				console.log(`[清理错误] ${accountName}: 清除缓存并重置错误次数错误`);
 			}
-
 		}
 
 		const results = [];
@@ -198,6 +211,18 @@ class UnifiedAnyRouterChecker {
 			);
 
 			if (loginResult && loginResult.userInfo) {
+				// 更新 session 和 account_id（仅在 AnyRouter 时更新）
+				if (platform.name === 'AnyRouter') {
+					if (loginResult.session) {
+						updateData.session = loginResult.session;
+						// session 有效期设置为 30 天
+						updateData.session_expire_time = Date.now() + 30 * 24 * 60 * 60 * 1000;
+					}
+					if (loginResult.apiUser) {
+						updateData.account_id = loginResult.apiUser;
+					}
+				}
+
 				// AnyRouter 的余额存储到 balance
 				if (platform.name === 'AnyRouter') {
 					updateData.balance = Math.round(loginResult.userInfo.quota / 500000);
@@ -233,7 +258,9 @@ class UnifiedAnyRouterChecker {
 
 				// 如果是两者都签到模式，且 AnyRouter 签到失败，则跳过后续平台签到
 				if (checkinMode === 3 && platform.name === 'AnyRouter') {
-					console.log(`[跳过] ${accountName}: AnyRouter 签到失败，跳过 AgentRouter 签到，等待下次一起重试`);
+					console.log(
+						`[跳过] ${accountName}: AnyRouter 签到失败，跳过 AgentRouter 签到，等待下次一起重试`
+					);
 					break;
 				}
 			}
@@ -253,7 +280,9 @@ class UnifiedAnyRouterChecker {
 		await this.updateAccountInfo(accountInfo._id, updateData);
 
 		// 构建返回结果
-		const userInfoTexts = results.filter((r) => r.success).map((r) => `${r.platform}: ${r.userInfo}`);
+		const userInfoTexts = results
+			.filter((r) => r.success)
+			.map((r) => `${r.platform}: ${r.userInfo}`);
 
 		return {
 			success: allSuccess,
@@ -277,7 +306,9 @@ class UnifiedAnyRouterChecker {
 		// 如果错误次数 > 2，删除持久化缓存并重置错误次数
 		if (currentErrorCount > 2) {
 			try {
-				console.log(`[清理] ${accountName}: 检测到错误次数 > 2 (${currentErrorCount})，清除持久化缓存...`);
+				console.log(
+					`[清理] ${accountName}: 检测到错误次数 > 2 (${currentErrorCount})，清除持久化缓存...`
+				);
 
 				// 创建临时实例用于清除缓存（baseUrl 不重要，只用于调用 getUserDataDir）
 				const tempModule = new AnyRouterGitHubSignIn('https://anyrouter.top');
@@ -333,6 +364,18 @@ class UnifiedAnyRouterChecker {
 			);
 
 			if (loginResult && loginResult.userInfo) {
+				// 更新 session 和 account_id（仅在 AnyRouter 时更新）
+				if (platform.name === 'AnyRouter') {
+					if (loginResult.session) {
+						updateData.session = loginResult.session;
+						// session 有效期设置为 30 天
+						updateData.session_expire_time = Date.now() + 30 * 24 * 60 * 60 * 1000;
+					}
+					if (loginResult.apiUser) {
+						updateData.account_id = loginResult.apiUser;
+					}
+				}
+
 				// AnyRouter 的余额存储到 balance
 				if (platform.name === 'AnyRouter') {
 					updateData.balance = Math.round(loginResult.userInfo.quota / 500000);
@@ -368,7 +411,9 @@ class UnifiedAnyRouterChecker {
 
 				// 如果是两者都签到模式，且 AnyRouter 签到失败，则跳过后续平台签到
 				if (checkinMode === 3 && platform.name === 'AnyRouter') {
-					console.log(`[跳过] ${accountName}: AnyRouter 签到失败，跳过 AgentRouter 签到，等待下次一起重试`);
+					console.log(
+						`[跳过] ${accountName}: AnyRouter 签到失败，跳过 AgentRouter 签到，等待下次一起重试`
+					);
 					break;
 				}
 			}
@@ -388,7 +433,9 @@ class UnifiedAnyRouterChecker {
 		await this.updateAccountInfo(accountInfo._id, updateData);
 
 		// 构建返回结果
-		const userInfoTexts = results.filter((r) => r.success).map((r) => `${r.platform}: ${r.userInfo}`);
+		const userInfoTexts = results
+			.filter((r) => r.success)
+			.map((r) => `${r.platform}: ${r.userInfo}`);
 
 		return {
 			success: allSuccess,
@@ -400,11 +447,76 @@ class UnifiedAnyRouterChecker {
 	}
 
 	/**
+	 * 使用 Session 进行签到（优先级最高）
+	 */
+	async checkInWithSession(accountInfo) {
+		const accountName = accountInfo.username || accountInfo._id || '未知账号';
+		const session = accountInfo.session;
+		const apiUser = accountInfo.account_id || accountInfo.api_user;
+
+		console.log(`[登录] ${accountName}: 使用 Session 签到 (API User: ${apiUser})`);
+
+		// 调用 Session 签到模块
+		const signInResult = await this.sessionSignInModule.signIn(session, apiUser);
+
+		if (signInResult && signInResult.success) {
+			// 构建更新数据
+			const updateData = {
+				checkin_date: Date.now(),
+			};
+
+			let userInfoText = null;
+
+			// 如果成功获取用户信息，添加余额、已使用额度和推广码
+			if (signInResult.userInfo) {
+				updateData.balance = Math.round(signInResult.userInfo.quota / 500000);
+				updateData.used = Math.round((signInResult.userInfo.usedQuota || 0) / 500000);
+				if (signInResult.userInfo.affCode) {
+					updateData.aff_code = signInResult.userInfo.affCode;
+				}
+
+				const quota = (signInResult.userInfo.quota / 500000).toFixed(2);
+				const usedQuota = (signInResult.userInfo.usedQuota || 0) / 500000;
+				userInfoText = `💰 当前余额: $${quota}, 已使用: $${usedQuota.toFixed(2)}`;
+			}
+
+			// 更新账户信息
+			await this.updateAccountInfo(accountInfo._id, updateData);
+
+			return {
+				success: true,
+				account: accountName,
+				userInfo: userInfoText,
+				method: 'session',
+			};
+		} else {
+			console.log(`[失败] ${accountName}: Session 签到失败，将尝试其他登录方式`);
+			return null; // 返回 null 表示需要尝试其他登录方式
+		}
+	}
+
+	/**
 	 * 为单个账号执行签到
 	 */
 	async checkInAccount(accountInfo, accountIndex) {
 		const accountName = accountInfo.username || accountInfo._id || `账号 ${accountIndex + 1}`;
 		console.log(`\n[处理中] 开始处理 ${accountName}`);
+
+		// 优先检查是否有 session 和 api_user/account_id
+		const hasSession = accountInfo.session && (accountInfo.account_id || accountInfo.api_user);
+
+		if (hasSession) {
+			console.log(`[检测] ${accountName}: 发现有效的 Session，将使用 Session 签到`);
+			const sessionResult = await this.checkInWithSession(accountInfo);
+
+			// 如果 Session 签到成功，直接返回结果
+			if (sessionResult && sessionResult.success) {
+				return sessionResult;
+			}
+
+			// Session 签到失败，继续尝试其他方式
+			console.log(`[回退] ${accountName}: Session 签到失败，尝试其他登录方式...`);
+		}
 
 		const hasPassword = accountInfo.username && accountInfo.password;
 
@@ -545,8 +657,6 @@ class UnifiedAnyRouterChecker {
 
 export default UnifiedAnyRouterChecker;
 
-
-
 // 如果直接运行此文件，执行注册
 const isMainModule = fileURLToPath(import.meta.url) === process.argv[1];
 
@@ -554,34 +664,33 @@ if (isMainModule) {
 	(async () => {
 		const testAccounts = [
 			{
-				"_id": "68f38292e2b826dcc6533771",
+
+				"_id": "69036e0b5ef9299ac22b2272",
 				"used": 0,
 				"notes": "",
-				"balance": 150,
+				"balance": 125,
 				"is_sold": false,
-				"session": "",
-				"aff_code": "s51S",
+				"session": "MTc2MTgzNTgwMHxEWDhFQVFMX2dBQUJFQUVRQUFEX3h2LUFBQVlHYzNSeWFXNW5EQWNBQldkeWIzVndCbk4wY21sdVp3d0pBQWRrWldaaGRXeDBCbk4wY21sdVp3d05BQXR2WVhWMGFGOXpkR0YwWlFaemRISnBibWNNRGdBTVVGZDRVbFZVV1hGbGRITTFCbk4wY21sdVp3d0VBQUpwWkFOcGJuUUVCUUQ5QXJnU0JuTjBjbWx1Wnd3S0FBaDFjMlZ5Ym1GdFpRWnpkSEpwYm1jTUR3QU5iR2x1ZFhoa2IxODRPVEE1TndaemRISnBibWNNQmdBRWNtOXNaUU5wYm5RRUFnQUNCbk4wY21sdVp3d0lBQVp6ZEdGMGRYTURhVzUwQkFJQUFnPT18uvDuzHwJbImuTQQcmSbH9icwpFuLR8oXHYn9QJJ9ac8=",
+				"aff_code": "wKqu",
 				"can_sell": true,
-				"password": "chenxi1pjv",
-				"username": "chenxi1",
+				"password": "leishengjh",
+				"username": "leisheng",
 				"sell_date": 0,
-				"account_id": "",
-				"create_date": 1760789138803,
-				"update_date": 1760839320668,
+				"account_id": "89097",
+				"create_date": 1761832452721,
+				"update_date": 1761835849970,
 				"account_type": 1,
-				"checkin_date": 1760839318230,
+				"checkin_date": 1761835738156,
 				"checkin_mode": 3,
-				"workflow_url": "https://github.com/18259178447/ay4",
+				"workflow_url": "https://github.com/18259178447/ay6",
 				"anyrouter_user_id": "official_user_001",
-				"agentrouter_balance": 0,
+				"agentrouter_balance": 35,
 				"checkin_error_count": 0,
-				"session_expire_time": 0
-			},
+				"session_expire_time": 1764427808099
+			}
 		];
 		const checker = new UnifiedAnyRouterChecker(testAccounts);
 		const checkResult = await checker.run();
 		console.log('\n[最终结果]', JSON.stringify(checkResult, null, 2));
 	})();
 }
-
-
