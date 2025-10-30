@@ -181,7 +181,7 @@ class UnifiedAnyRouterChecker {
 		}
 
 		const results = [];
-		const updateData = { checkin_date: Date.now() };
+		const updateData = {};
 
 		// 根据 checkin_mode 决定签到哪个平台
 		const platforms = [];
@@ -269,6 +269,11 @@ class UnifiedAnyRouterChecker {
 		// 判断所有平台是否都签到成功
 		const allSuccess = results.every((r) => r.success);
 
+		// 只有至少有一个平台签到成功，才更新签到时间
+		if (results.some((r) => r.success)) {
+			updateData.checkin_date = Date.now();
+		}
+
 		// 更新签到错误次数
 		if (allSuccess) {
 			updateData.checkin_error_count = 0; // 签到成功，重置错误次数
@@ -333,7 +338,7 @@ class UnifiedAnyRouterChecker {
 		}
 
 		const results = [];
-		const updateData = { checkin_date: Date.now() };
+		const updateData = {};
 
 		// 根据 checkin_mode 决定签到哪个平台
 		const platforms = [];
@@ -421,6 +426,11 @@ class UnifiedAnyRouterChecker {
 
 		// 判断所有平台是否都签到成功
 		const allSuccess = results.every((r) => r.success);
+
+		// 只有至少有一个平台签到成功，才更新签到时间
+		if (results.some((r) => r.success)) {
+			updateData.checkin_date = Date.now();
+		}
 
 		// 更新签到错误次数
 		if (allSuccess) {
